@@ -470,6 +470,11 @@ std::unique_ptr<ForwardContext> ForwardContext::create(const Model& model,
             // to standard RoPE when all per-token pos slots are equal.
             fc->impl_->rope_sections[0] = fc->impl_->n_rot / 2;
         }
+        std::fprintf(stderr, "[sp-engine] mRoPE mode=%d sections=[%d,%d,%d,%d] n_rot=%d\n",
+                     fc->impl_->rope_mode_mrope,
+                     fc->impl_->rope_sections[0], fc->impl_->rope_sections[1],
+                     fc->impl_->rope_sections[2], fc->impl_->rope_sections[3],
+                     fc->impl_->n_rot);
 
         // GDN (linear-attention) hparams for MOE_GDN layers.
         const int conv_kernel   = (int)model.get_i64(arch + ".ssm.conv_kernel",    4);

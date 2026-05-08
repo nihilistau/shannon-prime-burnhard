@@ -1,6 +1,6 @@
 # Shannon-Prime BurnHard — Project State
 
-Last updated: 2026-05-09
+Last updated: 2026-05-09 (GDN fused op landed)
 
 ## Overall Goals
 
@@ -35,9 +35,10 @@ Last updated: 2026-05-09
 - [x] ggml updated to 0.11.0 (from llama.cpp b8763)
 - [x] Non-CUDA build verified clean (73/73, zero errors)
 - [x] Runtime verified on Qwen2.5-Coder-0.5B
+- [x] GDN fused op: ggml_gated_delta_net replaces chunked prefill (caca3ea)
+- [x] All 30 GDN layers computing on Qwen3.6-35B-A3B (zero crashes, zero NaN)
 
 ### In Progress
-- [ ] **Fix GDN layers**: Refactor forward.cpp to use fused `ggml_gated_delta_net` for prefill (n>1)
 - [ ] **Q4_K centered nibbles**: Implement `(q - 8)` bit-slicing in /core to fix repetitive tokens
 - [ ] **mRoPE Mode 8**: 3-segment partitioned rotation for Qwen 3.6
 
