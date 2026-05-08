@@ -1,6 +1,6 @@
 # Shannon-Prime BurnHard — Project State
 
-Last updated: 2026-05-09 (phone sidecar speculative decode wired)
+Last updated: 2026-05-09 (all checklist items through storage topology complete)
 
 ## Overall Goals
 
@@ -46,11 +46,11 @@ Last updated: 2026-05-09 (phone sidecar speculative decode wired)
 - [x] Qwen3.6-27B validation: info + logits pass clean (64 layers, 48 GDN, mRoPE mode=8)
 - [x] Gemma4-31B: arch support added (bind 773/833 tensors), tokenizer wired (SPM)
 
-### In Progress
-- [ ] **Gemma4-31B forward pass**: Needs KV-sharing layer logic (layers without V reuse neighbor)
+- [x] Storage topology: docs/STORAGE_TOPOLOGY.md (P4800X + NVMe tiered plan)
+
+### Next Up
+- [ ] **Gemma4-31B forward pass**: KV-sharing layer logic (layers without V reuse neighbor)
 - [ ] **CRT expert-split Phase 2**: Actual GPU dispatch kernels (CUDA+L0 streams behind hetero barrier)
-- [ ] **Validate 27B + 31B**: Run Qwen3.6-27B and Gemma4-31B through full pipeline
-- [ ] **Storage topology**: Plan for 32GB NVMe + P4800X 375GB Optane U.2
 
 ### Future
 - [ ] Full Pulse mode: i9 + RTX + UHD + Optane + S22 all active
