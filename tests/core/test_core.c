@@ -9,7 +9,7 @@
 // Core math validation suite.
 // Every claim in the papers is testable here without any backend.
 
-#include "../core/shannon_prime.h"
+#include "../../core/include/shannon_prime.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>

@@ -32,7 +32,7 @@
 #include "sp_thermal_throttle.h"
 #include "sp_prefetch_telemetry.h"
 #include "sp_shredder_crt.h"
-#include "../../core/shannon_prime.h"
+#include "../../core/include/shannon_prime.h"
 
 #include <stdint.h>
 #include <stddef.h>

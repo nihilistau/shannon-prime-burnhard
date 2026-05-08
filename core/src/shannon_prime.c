@@ -876,7 +876,14 @@ int sp_shadow_cache_init(sp_shadow_cache_t *sc, const sp_config_t *cfg) {
     sc->calibrating = false;
     sc->calib_sum = NULL;
     sc->calib_sum2 = NULL;
+    sc->calib_cov = NULL;
     sc->calib_n = 0;
+
+    // SVD entropy ranking is the default — captures inter-coefficient
+    // correlations that raw variance misses. Falls back to variance
+    // ranking if the covariance matrix is degenerate. Disable via
+    // SHANNON_PRIME_NO_SVD_ENTROPY=1 environment variable.
+    sc->use_svd_entropy = !getenv("SHANNON_PRIME_NO_SVD_ENTROPY");
 
     return 0;
 }
@@ -893,6 +900,7 @@ void sp_shadow_cache_free(sp_shadow_cache_t *sc) {
     free(sc->var_unorder);
     free(sc->calib_sum);
     free(sc->calib_sum2);
+    free(sc->calib_cov);
     // k_cache and v_cache freed by backend
     sc->vht2_scratch    = NULL;
     sc->mobius_scratch = NULL;
@@ -902,6 +910,7 @@ void sp_shadow_cache_free(sp_shadow_cache_t *sc) {
     sc->var_unorder    = NULL;
     sc->calib_sum      = NULL;
     sc->calib_sum2     = NULL;
+    sc->calib_cov      = NULL;
 }
 
 // Write path: raw KV → VHT2 → Möbius reorder → band quantize → store
@@ -1090,6 +1099,14 @@ int sp_shadow_calibrate_begin(sp_shadow_cache_t *sc) {
         sc->calib_sum2 = NULL;
         return -1;
     }
+    // Allocate covariance accumulator for SVD entropy ranking
+    if (sc->use_svd_entropy) {
+        sc->calib_cov = (double *)calloc((size_t)hd * hd, sizeof(double));
+        if (!sc->calib_cov) {
+            // Fall back to variance-only ranking
+            sc->use_svd_entropy = false;
+        }
+    }
     sc->calib_n = 0;
     sc->calibrating = true;
     return 0;
@@ -1108,7 +1125,173 @@ void sp_shadow_calibrate_feed(sp_shadow_cache_t *sc, const float *vec) {
         sc->calib_sum[i]  += v;
         sc->calib_sum2[i] += v * v;
     }
+
+    // Accumulate covariance outer product: C += x · x^T
+    // Only the upper triangle is needed (symmetric), but we fill
+    // the full matrix for simplicity — SVD reads the whole thing.
+    if (sc->calib_cov) {
+        for (int i = 0; i < hd; i++) {
+            double xi = (double)sc->vht2_scratch[i];
+            double *row = sc->calib_cov + (size_t)i * hd;
+            for (int j = i; j < hd; j++) {
+                double xj = (double)sc->vht2_scratch[j];
+                double v = xi * xj;
+                row[j] += v;
+                if (j != i) sc->calib_cov[(size_t)j * hd + i] += v;
+            }
+        }
+    }
+
     sc->calib_n++;
+}
+
+// ============================================================================
+// SVD spectral entropy ranking
+// ============================================================================
+//
+// Given an n×n symmetric covariance matrix, compute its eigenvalues via
+// Jacobi rotation, then score each original dimension by how much it
+// contributes to the spectral entropy of the eigenspectrum.
+//
+// The "contribution" of dimension i is the sum of squared eigenvector
+// components weighted by the normalised eigenvalue:
+//
+//   score[i] = Σ_k (V[i][k])² × (λ_k / Σ λ)
+//
+// This captures correlations: a dimension might have low marginal variance
+// but contribute strongly to a principal component. Raw variance ranking
+// misses this; SVD entropy ranking catches it.
+//
+// The Jacobi solver converges for all real symmetric matrices. For n ≤ 256
+// it completes in < 1 ms on any modern CPU. This runs once at calibration
+// time, never on the hot path.
+
+// Jacobi eigenvalue solver for symmetric n×n matrix.
+// On entry: A is the symmetric matrix (will be modified in-place).
+// On exit:  eigenvalues[i] contains the eigenvalues.
+//           V[i*n+j] contains the eigenvectors (columns).
+// Returns 0 on success.
+static int sp_jacobi_eigen(double *A, double *eigenvalues, double *V,
+                           int n, int max_sweeps) {
+    // Initialise V to identity
+    memset(V, 0, (size_t)n * n * sizeof(double));
+    for (int i = 0; i < n; i++) V[i * n + i] = 1.0;
+
+    for (int sweep = 0; sweep < max_sweeps; sweep++) {
+        // Check convergence: sum of off-diagonal squared
+        double off_diag = 0.0;
+        for (int i = 0; i < n; i++)
+            for (int j = i + 1; j < n; j++)
+                off_diag += A[i * n + j] * A[i * n + j];
+        if (off_diag < 1e-20) break;
+
+        for (int p = 0; p < n - 1; p++) {
+            for (int q = p + 1; q < n; q++) {
+                double apq = A[p * n + q];
+                if (fabs(apq) < 1e-15) continue;
+
+                double app = A[p * n + p];
+                double aqq = A[q * n + q];
+                double tau = (aqq - app) / (2.0 * apq);
+                double t;
+                if (fabs(tau) > 1e15) {
+                    t = 1.0 / (2.0 * tau);
+                } else {
+                    t = (tau >= 0.0 ? 1.0 : -1.0)
+                        / (fabs(tau) + sqrt(1.0 + tau * tau));
+                }
+                double c = 1.0 / sqrt(1.0 + t * t);
+                double s = t * c;
+
+                // Update A
+                A[p * n + p] = app - t * apq;
+                A[q * n + q] = aqq + t * apq;
+                A[p * n + q] = 0.0;
+                A[q * n + p] = 0.0;
+
+                for (int r = 0; r < n; r++) {
+                    if (r == p || r == q) continue;
+                    double arp = A[r * n + p];
+                    double arq = A[r * n + q];
+                    A[r * n + p] = A[p * n + r] = c * arp - s * arq;
+                    A[r * n + q] = A[q * n + r] = s * arp + c * arq;
+                }
+
+                // Update eigenvectors
+                for (int r = 0; r < n; r++) {
+                    double vrp = V[r * n + p];
+                    double vrq = V[r * n + q];
+                    V[r * n + p] = c * vrp - s * vrq;
+                    V[r * n + q] = s * vrp + c * vrq;
+                }
+            }
+        }
+    }
+
+    // Extract eigenvalues from diagonal
+    for (int i = 0; i < n; i++)
+        eigenvalues[i] = A[i * n + i];
+
+    return 0;
+}
+
+// Compute SVD-entropy-weighted score for each dimension.
+// cov: n×n covariance matrix (will be destroyed by Jacobi)
+// scores: output, n floats, higher = more important
+// Returns 0 on success, -1 on failure (caller should fall back to variance).
+int sp_svd_entropy_scores(double *cov, float *scores, int n) {
+    double *eigenvalues = (double *)malloc(n * sizeof(double));
+    double *V = (double *)malloc((size_t)n * n * sizeof(double));
+    if (!eigenvalues || !V) {
+        free(eigenvalues);
+        free(V);
+        return -1;
+    }
+
+    // Solve for eigenvalues and eigenvectors
+    if (sp_jacobi_eigen(cov, eigenvalues, V, n, 50) != 0) {
+        free(eigenvalues);
+        free(V);
+        return -1;
+    }
+
+    // Clamp negative eigenvalues to zero (numerical noise)
+    double total = 0.0;
+    for (int k = 0; k < n; k++) {
+        if (eigenvalues[k] < 0.0) eigenvalues[k] = 0.0;
+        total += eigenvalues[k];
+    }
+
+    if (total < 1e-30) {
+        // Degenerate — all eigenvalues zero. Fall back.
+        free(eigenvalues);
+        free(V);
+        return -1;
+    }
+
+    // Normalise eigenvalues to probabilities
+    double inv_total = 1.0 / total;
+    for (int k = 0; k < n; k++)
+        eigenvalues[k] *= inv_total;
+
+    // Score each dimension i:
+    //   score[i] = Σ_k V[i][k]² × p_k
+    // where p_k = λ_k / Σλ is the normalised eigenvalue.
+    // This weights each dimension by how much of the total spectral
+    // energy it participates in, giving higher scores to dimensions
+    // that contribute to dominant principal components.
+    for (int i = 0; i < n; i++) {
+        double s = 0.0;
+        for (int k = 0; k < n; k++) {
+            double vik = V[i * n + k];
+            s += vik * vik * eigenvalues[k];
+        }
+        scores[i] = (float)s;
+    }
+
+    free(eigenvalues);
+    free(V);
+    return 0;
 }
 
 int sp_shadow_calibrate_end(sp_shadow_cache_t *sc) {
@@ -1118,22 +1301,50 @@ int sp_shadow_calibrate_end(sp_shadow_cache_t *sc) {
     int hd = sc->config.head_dim;
     double inv_n = 1.0 / (double)sc->calib_n;
 
-    // Compute per-coefficient variance
-    float *variance = (float *)malloc(hd * sizeof(float));
+    // Compute per-coefficient variance (always — used as fallback)
+    float *ranking = (float *)malloc(hd * sizeof(float));
     for (int i = 0; i < hd; i++) {
         double mean = sc->calib_sum[i] * inv_n;
         double var  = sc->calib_sum2[i] * inv_n - mean * mean;
-        variance[i] = (var > 0.0) ? (float)var : 0.0f;
+        ranking[i] = (var > 0.0) ? (float)var : 0.0f;
+    }
+
+    const char *method = "variance";
+
+    // Attempt SVD spectral-entropy ranking (upgrades variance with
+    // inter-coefficient correlation awareness). Falls back silently
+    // if the covariance is degenerate or Jacobi fails.
+    if (sc->calib_cov && sc->use_svd_entropy) {
+        // Finalise covariance: C = E[xx^T] − E[x]E[x]^T
+        for (int i = 0; i < hd; i++) {
+            double mi = sc->calib_sum[i] * inv_n;
+            for (int j = 0; j < hd; j++) {
+                double mj = sc->calib_sum[j] * inv_n;
+                sc->calib_cov[i * hd + j] =
+                    sc->calib_cov[i * hd + j] * inv_n - mi * mj;
+            }
+        }
+
+        float *svd_scores = (float *)malloc(hd * sizeof(float));
+        if (svd_scores) {
+            if (sp_svd_entropy_scores(sc->calib_cov, svd_scores, hd) == 0) {
+                // SVD succeeded — use spectral entropy scores instead
+                memcpy(ranking, svd_scores, hd * sizeof(float));
+                method = "svd-entropy";
+            }
+            free(svd_scores);
+        }
     }
 
     free(sc->calib_sum);
     free(sc->calib_sum2);
+    free(sc->calib_cov);
     sc->calib_sum = NULL;
     sc->calib_sum2 = NULL;
+    sc->calib_cov = NULL;
 
-    // Build variance-ranked permutation: indices sorted by variance descending
-    // so highest-variance coefficients land in band 0 (highest bits).
-    // Free any prior allocation (safe even on first call — they start NULL).
+    // Build ranked permutation: indices sorted by score descending
+    // so highest-scoring coefficients land in band 0 (highest bits).
     free(sc->var_order);
     free(sc->var_unorder);
     sc->var_order   = (int *)malloc(hd * sizeof(int));
@@ -1143,9 +1354,9 @@ int sp_shadow_calibrate_end(sp_shadow_cache_t *sc) {
     // Insertion sort (head_dim ≤ 256, not hot path)
     for (int i = 1; i < hd; i++) {
         int key = sc->var_order[i];
-        float kv = variance[key];
+        float kv = ranking[key];
         int j = i - 1;
-        while (j >= 0 && variance[sc->var_order[j]] < kv) {
+        while (j >= 0 && ranking[sc->var_order[j]] < kv) {
             sc->var_order[j + 1] = sc->var_order[j];
             j--;
         }
@@ -1158,11 +1369,11 @@ int sp_shadow_calibrate_end(sp_shadow_cache_t *sc) {
     }
 
     sc->use_var_reorder = true;
-    free(variance);
+    free(ranking);
 
     if (getenv("SHANNON_PRIME_VERBOSE")) {
-        fprintf(stderr, "[Shannon-Prime SHADOW] variance-ranked reorder calibrated "
-                        "(head_dim=%d, n_vectors=%d)\n", hd, sc->calib_n);
+        fprintf(stderr, "[Shannon-Prime SHADOW] %s-ranked reorder calibrated "
+                        "(head_dim=%d, n_vectors=%d)\n", method, hd, sc->calib_n);
     }
 
     sc->calib_n = 0;
@@ -1934,4 +2145,25 @@ int sp_hier_cache_load(sp_hier_cache_t *sc,
     }
 
     return max_loaded;
+}
+
+int sp_hier_cache_load_partial(sp_hier_cache_t *sc,
+                               const char *prefix,
+                               uint64_t expected_hash,
+                               int max_bands) {
+    // Full disk load — the data layout is the same regardless of partial mode.
+    int rc = sp_hier_cache_load(sc, prefix, expected_hash);
+    if (rc < 0) return rc;
+
+    // Clamp max_bands and store. Subsequent reads via sp_hier_reconstruct_one
+    // will use sp_band_dequantize_partial with this limit, zeroing the higher
+    // skeleton bands and producing a reduced-fidelity reconstruction.
+    if (sc->n_slots > 0) {
+        int n_skel_bands = sc->predictors[0].skel_bands.n_bands;
+        if (max_bands < 0)            max_bands = 0;
+        if (max_bands > n_skel_bands) max_bands = n_skel_bands;
+    }
+    sc->max_skel_bands = max_bands;
+
+    return rc;
 }

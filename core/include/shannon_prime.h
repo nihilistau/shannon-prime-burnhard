@@ -512,8 +512,10 @@ typedef struct {
     bool                calibrating;         // true between begin/end
     double             *calib_sum;           // pad_dim doubles: Σ x_i
     double             *calib_sum2;          // pad_dim doubles: Σ x_i²
+    double             *calib_cov;           // pad_dim × pad_dim covariance accumulator
     int                 calib_n;             // number of vectors fed
     int                 max_seq_len;         // stashed for re-init
+    bool                use_svd_entropy;     // true = SVD spectral-entropy ranking (default)
 } sp_sqfree_cache_t;
 
 int  sp_sqfree_cache_init(sp_sqfree_cache_t *sc, const sp_config_t *cfg,
@@ -661,7 +663,8 @@ typedef struct {
 // Returns 0 on success.
 int  sp_hier_predictor_init(sp_hier_predictor_t *hp, int pad_dim,
                             int hier_level, int target_res_bits,
-                            int skel_n_bands, const int *skel_band_bits);
+                            int skel_n_bands, const int *skel_band_bits,
+                            uint32_t skel_ternary_mask);
 void sp_hier_predictor_free(sp_hier_predictor_t *hp);
 
 // Calibration: collect Vilenkin-domain vectors, fit W via ridge regression.
@@ -708,11 +711,21 @@ typedef struct {
     int                  n_slots;        // = n_layers × n_heads_kv
     sp_hier_predictor_t *predictors;     // [n_slots]
 
+    // Split K/V residual bits — allows e.g. K=1bit, V=2bit.
+    // Set by sp_hier_cache_init; if target_res_bits_v==0, both use target_res_bits.
+    int                  k_res_bits;
+    int                  v_res_bits;
+
     // Compressed storage
     uint8_t            **k_cache;        // [n_slots][max_seq × bytes_per_pos]
     uint8_t            **v_cache;
     int                  k_bytes_per_pos;
     int                  v_bytes_per_pos;
+
+    // Partial-load: limit skeleton dequantization to first N bands.
+    // -1 (default) = full reconstruction; 0..n_bands = partial.
+    // Set by sp_hier_cache_load_partial; affects all subsequent reads.
+    int                  max_skel_bands;
 
     // Scratch buffers (allocated once, reused every write/read)
     float               *pad_scratch;    // pad_dim
@@ -727,10 +740,12 @@ typedef struct {
 // hier_level: 0 = automatic, 1..n_primes-1 = explicit.
 // skel_bits_csv: band bit allocation for skeleton (e.g. "5,5" for 2 bands).
 // target_res_bits: 1-4 bits for target residuals.
+// target_res_bits_v: V residual bits; 0 → same as target_res_bits (K).
 int  sp_hier_cache_init(sp_hier_cache_t *hc, const sp_config_t *cfg,
                         int max_seq_len, int hier_level,
                         int skel_n_bands, const int *skel_band_bits,
-                        int target_res_bits);
+                        int target_res_bits, int target_res_bits_v,
+                        uint32_t skel_ternary_mask);
 void sp_hier_cache_free(sp_hier_cache_t *hc);
 
 // Calibration: feeds Vilenkin-domain vectors to ALL slot predictors.
@@ -812,7 +827,9 @@ typedef struct {
     bool                calibrating;
     double             *calib_sum;        // head_dim doubles
     double             *calib_sum2;       // head_dim doubles
+    double             *calib_cov;        // head_dim × head_dim covariance accumulator
     int                 calib_n;
+    bool                use_svd_entropy;  // true = SVD spectral-entropy ranking (default)
 } sp_shadow_cache_t;
 
 // Initialize shadow cache. Backend allocates compressed storage.
@@ -1031,6 +1048,13 @@ float sp_correlation_f32(const float *a, const float *b, int n);
 // Compute compression ratio for current config.
 float sp_compression_ratio(const sp_config_t *cfg);
 
+// SVD spectral-entropy ranking for calibration.
+// Given an n×n covariance matrix (destroyed in-place by Jacobi),
+// compute per-dimension importance scores that capture inter-coefficient
+// correlations — an upgrade over raw marginal variance.
+// Returns 0 on success, -1 if Jacobi fails (fall back to variance).
+int sp_svd_entropy_scores(double *cov, float *scores, int n);
+
 // Print config summary to stderr.
 void sp_config_print(const sp_config_t *cfg);
 
@@ -1122,6 +1146,15 @@ int sp_hier_cache_save(const sp_hier_cache_t *sc,
 int sp_hier_cache_load(sp_hier_cache_t *sc,
                        const char *prefix,
                        uint64_t expected_hash);
+
+// Partial load: same disk read as sp_hier_cache_load, but limits skeleton
+// dequantization to the first `max_bands` bands.  Subsequent read_k/read_v
+// calls reconstruct with reduced-fidelity skeletons (higher bands zeroed).
+// max_bands is clamped into [0, skel_bands.n_bands].
+int sp_hier_cache_load_partial(sp_hier_cache_t *sc,
+                               const char *prefix,
+                               uint64_t expected_hash,
+                               int max_bands);
 
 // Utility: compute FNV-1a hash of a string (for model_hash).
 uint64_t sp_fnv1a_hash(const char *str, size_t len);

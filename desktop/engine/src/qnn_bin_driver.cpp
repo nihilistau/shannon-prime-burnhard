@@ -22,7 +22,7 @@
 #ifdef SP_ENGINE_HEXAGON_FASTRPC
 // Phase 6: HVX logit argmax — eliminates the ARM scan after Split 4.
 extern "C" {
-#include "../lib/shannon-prime/backends/hexagon/shannon_prime_hexagon.h"
+#include "../../../mobile/hexagon/shannon_prime_hexagon.h"
 #include "rpcmem.h"  // logit output buffer is rpcmem-backed for zero-copy DSP access
 }
 // rpcmem constants (matching shannon_prime_hexagon.c)

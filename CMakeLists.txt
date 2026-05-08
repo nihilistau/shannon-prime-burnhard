@@ -58,6 +58,7 @@ set(SP_CORE_SRC
     core/src/shannon_prime_sqfree.c
     core/src/shannon_prime_cauchy.c
     core/src/shannon_prime_modelpack.c
+    core/src/shannon_prime_pe.c
     desktop/crt/sp_crt.c
     desktop/crt/sp_crt_dispatch.c
     desktop/crt/sp_theoretical.c)
