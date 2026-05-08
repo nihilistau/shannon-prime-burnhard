@@ -1,0 +1,117 @@
+// Shannon-Prime VHT2: Exact Spectral KV Cache Compression
+// Copyright (C) 2026 Ray Daniels. All Rights Reserved.
+//
+// Licensed under the GNU Affero General Public License v3.0 (AGPLv3).
+// Commercial license available — contact raydaniels@gmail.com
+//
+// See LICENSE in the project root for full terms.
+
+// GLSL Compute Shader: Prime-Hartley (Vilenkin) Transform
+//
+// Applies successive Hartley stages for each prime factor of N.
+// cas(x) = cos(x) + sin(x), normalized by 1/√p per factor.
+// Self-inverse: applying twice = identity.
+//
+// Uses log2(n) butterfly passes at p=2; generalises to arbitrary products
+// of small primes {2,3,5,7,11,13}.
+//
+// For hd=128 → pad_dim=154 = 2·7·11: three stages (p=2, p=7, p=11).
+// For hd=64  → pad_dim=66  = 2·3·11: three stages (p=2, p=3, p=11).
+
+#version 450
+
+layout(local_size_x = 256) in;  // Must be >= pad_dim
+
+layout(set = 0, binding = 0) buffer Data {
+    float data[];
+};
+
+// Prime factors passed as push constants — up to 8 factors to cover all
+// supported head dims. hd=256 = 2^8 needs 8 factors; hd=128 = 2^7 needs 7.
+// Sqfree-padded dims (hd=66, 154, 330) never exceed 4 factors.
+layout(push_constant) uniform PushConstants {
+    uint n;             // Total dimension (pad_dim, product of factors)
+    uint n_vecs;        // Number of vectors in the batch
+    uint n_factors;     // How many prime factors
+    uint factors[8];    // The prime factors (e.g. {2, 7, 11} for N=154)
+};
+
+shared float smem[330];   // Max pad_dim = 330 (hd=256)
+shared float tmp[16];     // Max prime = 13
+
+// Precomputed 1/sqrt(p) for small primes
+float inv_sqrt_p(uint p) {
+    if (p == 2u)  return 0.70710678;   // 1/√2
+    if (p == 3u)  return 0.57735027;   // 1/√3
+    if (p == 5u)  return 0.44721360;   // 1/√5
+    if (p == 7u)  return 0.37796447;   // 1/√7
+    if (p == 11u) return 0.30151134;   // 1/√11
+    if (p == 13u) return 0.27735010;   // 1/√13
+    return 1.0 / sqrt(float(p));
+}
+
+void main() {
+    uint vec_idx = gl_WorkGroupID.x;
+    uint tid     = gl_LocalInvocationID.x;
+
+    if (vec_idx >= n_vecs) return;
+
+    uint base = vec_idx * n;
+
+    // Load into shared memory
+    if (tid < n) {
+        smem[tid] = data[base + tid];
+    }
+    barrier();
+
+    // Apply successive Hartley stages
+    uint stride = 1u;
+    for (uint f = 0u; f < n_factors; f++) {
+        uint p = factors[f];
+        uint block_size = stride * p;
+        uint n_blocks = n / block_size;
+        float isp = inv_sqrt_p(p);
+
+        // Each thread handles one (block, stride_pos) pair
+        // Total work items per stage = n_blocks * stride
+        uint work_items = n_blocks * stride;
+
+        for (uint wi = tid; wi < work_items; wi += gl_WorkGroupSize.x) {
+            uint blk = wi / stride;
+            uint s   = wi % stride;
+            uint elem_base = blk * block_size + s;
+
+            // Gather p elements at stride intervals into tmp
+            // (only thread-local — each thread processes its own group)
+            float gathered[16];  // Max prime = 13
+            for (uint k = 0u; k < p; k++) {
+                gathered[k] = smem[elem_base + k * stride];
+            }
+
+            // Apply p×p Hartley matrix
+            float result[16];
+            for (uint k = 0u; k < p; k++) {
+                float sum = 0.0;
+                for (uint j = 0u; j < p; j++) {
+                    float angle = 6.28318530718 * float(k * j) / float(p);
+                    float cas_val = cos(angle) + sin(angle);
+                    sum += cas_val * gathered[j];
+                }
+                result[k] = sum * isp;
+            }
+
+            // Scatter back
+            for (uint k = 0u; k < p; k++) {
+                smem[elem_base + k * stride] = result[k];
+            }
+        }
+
+        stride *= p;
+        barrier();
+    }
+
+    // Write back to global memory
+    if (tid < n) {
+        data[base + tid] = smem[tid];
+    }
+}

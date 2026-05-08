@@ -1,0 +1,5 @@
+# NDK build artifacts — re-buildable via build.cmd
+libsp_qnn.so
+test_sp_qnn
+*.o
+build.log

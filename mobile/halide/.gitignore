@@ -1,0 +1,7 @@
+# Halide build artifacts. Regenerated from the .cpp generator.
+build/
+*.generator.exe
+*.obj
+*.exp
+*.lib
+*.pdb

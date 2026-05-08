@@ -1,0 +1,127 @@
+#version 450
+
+// Shannon-Prime CRT: Modular matmul compute shader for Ring M2
+// Copyright (C) 2026 Ray Daniels. All Rights Reserved.
+// Licensed under AGPLv3.
+//
+// Computes C = (A × B) mod M2  where M2 = 2^31 - 19
+// A: [M × K] uint32, B: [K × N] uint32, C: [M × N] uint32
+//
+// Uses tiled shared memory for coalesced access.
+// Each workgroup computes one TILE_DIM × TILE_DIM output tile.
+
+#define TILE_DIM 16
+
+layout(local_size_x = TILE_DIM, local_size_y = TILE_DIM) in;
+
+layout(set = 0, binding = 0) readonly  buffer BufA { uint data_a[]; };
+layout(set = 0, binding = 1) readonly  buffer BufB { uint data_b[]; };
+layout(set = 0, binding = 2) writeonly buffer BufC { uint data_c[]; };
+
+// Push constants: dimensions + modulus
+layout(push_constant) uniform Params {
+    int M;
+    int N;
+    int K;
+    uint modulus;  // M2 = 2147483629
+};
+
+shared uint tile_a[TILE_DIM][TILE_DIM];
+shared uint tile_b[TILE_DIM][TILE_DIM];
+
+void main() {
+    uint row = gl_WorkGroupID.y * TILE_DIM + gl_LocalInvocationID.y;
+    uint col = gl_WorkGroupID.x * TILE_DIM + gl_LocalInvocationID.x;
+
+    // Accumulator — use uint64 via uvec2 packing:
+    // We accumulate as two uint32s and reduce mod M2 per tile
+    // to keep values in range.
+    uint acc = 0;
+
+    uint n_tiles = (uint(K) + TILE_DIM - 1) / TILE_DIM;
+
+    for (uint t = 0; t < n_tiles; t++) {
+        // Load tile of A into shared memory
+        uint a_col = t * TILE_DIM + gl_LocalInvocationID.x;
+        if (row < uint(M) && a_col < uint(K)) {
+            tile_a[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = data_a[row * uint(K) + a_col];
+        } else {
+            tile_a[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = 0;
+        }
+
+        // Load tile of B into shared memory
+        uint b_row = t * TILE_DIM + gl_LocalInvocationID.y;
+        if (b_row < uint(K) && col < uint(N)) {
+            tile_b[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = data_b[b_row * uint(N) + col];
+        } else {
+            tile_b[gl_LocalInvocationID.y][gl_LocalInvocationID.x] = 0;
+        }
+
+        barrier();
+
+        // Accumulate products with modular reduction
+        // Since M2 ≈ 2^31, product of two ring elements < M2² ≈ 2^62.
+        // We need 64-bit multiplication. GLSL 450 doesn't have native uint64,
+        // so we use umulExtended for the full 64-bit product and then reduce.
+        for (uint k = 0; k < TILE_DIM; k++) {
+            uint a_val = tile_a[gl_LocalInvocationID.y][k];
+            uint b_val = tile_b[k][gl_LocalInvocationID.x];
+
+            // Full 64-bit product: hi:lo = a_val * b_val
+            uint hi, lo;
+            umulExtended(a_val, b_val, hi, lo);
+
+            // Reduce (hi:lo) mod modulus
+            // hi < 2^32, modulus ≈ 2^31, so hi mod modulus fits in uint32
+            // (hi:lo) = hi * 2^32 + lo
+            // = hi * (modulus + (2^32 - modulus)) + lo
+            // = hi * modulus + hi * (2^32 - modulus) + lo
+            // So (hi:lo) mod modulus = (hi * (2^32 - modulus) + lo) mod modulus
+            //
+            // 2^32 - M2 = 2^32 - (2^31 - 19) = 2^31 + 19 = 2147483667
+            // hi * 2147483667 can overflow uint32 if hi > 1, so we need care.
+            // Actually hi < modulus (since a_val, b_val < modulus ≈ 2^31),
+            // and 2^32 - modulus = 2147483667 < 2^31 + 20.
+            // So hi * (2^32 - M2) < 2^31 * (2^31 + 20) ≈ 2^62. Need 64-bit again.
+            //
+            // Simpler approach: since we reduce per-tile (16 iterations),
+            // we can accumulate in uint32 with per-iteration reduction.
+            // product mod modulus < modulus ≈ 2^31
+            // acc + product < 2^31 + 2^31 = 2^32 — fits in uint32!
+            // So we just need (hi:lo) mod modulus.
+
+            // Multi-step reduction of 64-bit product:
+            // Step 1: Split into modulus-sized chunks
+            // (hi * 2^32 + lo) mod M2
+            // = ((hi mod M2) * (2^32 mod M2) + (lo mod M2)) mod M2
+            uint r_hi = hi % modulus;
+            uint r_lo = lo % modulus;
+            // 2^32 mod M2 = 2^32 - M2 = 4294967296 - 2147483629 = 2147483667
+            // But 2147483667 > M2, so 2^32 mod M2 = 2147483667 - 2147483629 = 38
+            // Wait: 2^32 = 2 * 2^31 = 2 * (M2 + 19) = 2*M2 + 38
+            // So 2^32 mod M2 = 38. Nice!
+            uint two32_mod_m2 = 38u;
+
+            // product mod M2 = (r_hi * 38 + r_lo) mod M2
+            // r_hi < M2 ≈ 2^31, so r_hi * 38 < 38 * 2^31 ≈ 2^36. Fits uint32? No, 2^36 > 2^32.
+            // Need to split: r_hi * 38 as uint64
+            uint prod_hi, prod_lo;
+            umulExtended(r_hi, two32_mod_m2, prod_hi, prod_lo);
+            // prod_hi:prod_lo = r_hi * 38 < 38 * 2^31 < 2^37
+            // prod_hi < 2^5 = 32
+            // So final = (prod_hi * 2^32 + prod_lo + r_lo) mod M2
+            // prod_hi * 2^32 mod M2 = prod_hi * 38 (same trick, and prod_hi < 32 so prod_hi * 38 < 1216)
+            uint final_val = (prod_hi * two32_mod_m2 + prod_lo % modulus + r_lo) % modulus;
+
+            // Accumulate with modular reduction
+            acc = (acc + final_val) % modulus;
+        }
+
+        barrier();
+    }
+
+    // Write result
+    if (row < uint(M) && col < uint(N)) {
+        data_c[row * uint(N) + col] = acc;
+    }
+}

@@ -1,0 +1,95 @@
+// Shannon-Prime VHT2: Exact Spectral KV Cache Compression
+// Copyright (C) 2026 Ray Daniels. All Rights Reserved.
+//
+// Licensed under the GNU Affero General Public License v3.0 (AGPLv3).
+// Commercial license available — contact raydaniels@gmail.com
+//
+// See LICENSE in the project root for full terms.
+
+// GLSL Compute Shader: VHT2 Banded Dequantization
+//
+// Inverse of band_quantize.comp. Reads the packed bit-streams back out,
+// multiplies by per-band scale, writes float coefficients.
+//
+// v1.05 — widened to 16 bands with per-band span + non-divisible tail
+// absorption + UB-safe shifts to match the quantiser.
+//
+// One workgroup per vector; thread 0 serialises the bit-unpacking. The
+// non-finite scale guard from `sp_band_dequantize` is mirrored here: if
+// the per-band scale round-trips to Inf/NaN the band decodes as zeros
+// instead of poisoning the inverse VHT2.
+
+#version 450
+
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0) readonly buffer Input {
+    uint input_data[];   // Packed compressed stream (uint32)
+};
+
+layout(set = 0, binding = 1) writeonly buffer Output {
+    float output_data[]; // Per-band dequantised floats (head_dim per vector)
+};
+
+layout(push_constant) uniform PushConstants {
+    uint n;             // Logical vector length (head_dim)
+    uint n_bands;       // 1..16
+    uint total_words;   // Input uint words per vector
+    uint _pad;
+    uint band_bits[16];
+};
+
+uint get_band_bits(uint band) { return band_bits[band]; }
+
+void main() {
+    uint vec_idx = gl_WorkGroupID.x;
+    uint tid     = gl_LocalInvocationID.x;
+
+    uint in_base  = vec_idx * total_words;
+    uint out_base = vec_idx * n;
+
+    // Typical band size; last band absorbs the remainder.
+    uint typical_sz = n / n_bands;
+
+    // Sequential decode in thread 0 mirrors the quantiser.
+    if (tid == 0u) {
+        uint in_word_offset = 0u;
+
+        for (uint b = 0u; b < n_bands; b++) {
+            uint bits    = get_band_bits(b);
+            uint max_val = (1u << (bits - 1u)) - 1u;
+
+            uint band_start = b * typical_sz;
+            uint band_sz    = (b == n_bands - 1u)
+                              ? (n - band_start)
+                              : typical_sz;
+
+            // Per-band scale (first word). Mirror the non-finite guard.
+            float scale = uintBitsToFloat(input_data[in_base + in_word_offset]);
+            if (isinf(scale) || isnan(scale)) scale = 0.0;
+            in_word_offset++;
+
+            // Reset bit reader at each band boundary (quantiser writes the
+            // scale word, then bit-packs from scratch per band).
+            uint bit_buffer = 0u;
+            uint bit_pos    = 0u;
+
+            for (uint i = 0u; i < band_sz; i++) {
+                while (bit_pos < bits) {
+                    uint next_word = input_data[in_base + in_word_offset];
+                    in_word_offset++;
+                    bit_buffer |= (next_word << bit_pos);
+                    bit_pos    += 32u;
+                }
+
+                uint u = bit_buffer & ((1u << bits) - 1u);
+                bit_buffer >>= bits;
+                bit_pos    -= bits;
+
+                int q = int(u) - int(max_val);
+                output_data[out_base + band_start + i] = float(q) * scale;
+            }
+        }
+    }
+    barrier();
+}

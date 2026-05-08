@@ -1,0 +1,61 @@
+// Mode D Stage 1 probe — RPC contract for SP-packed-bytes DMA test.
+//
+// Patterned after the Halide DMA example IDL (eDmaFmt_RawData round-trip).
+// The probe:
+//   - Host packs SP K row(s) into a contiguous uint8 buffer formatted as
+//     `n_bands × packed_band_stride` (one row per band).
+//   - DSP UBWCDMA-reads this RAW-formatted buffer into L2 locked cache,
+//     runs sp_band_dequantize_2d (Halide-generated) per band-row,
+//     UBWCDMA-writes the fp32 output back to DDR.
+//   - Host compares the fp32 output to a scalar SP reference.
+//
+// The metadata (per-band scale, bits, max_val) is passed inline rather
+// than embedded in the byte stream — keeps the kernel simple and lets
+// us swap in different SP configurations without re-packing.
+//
+// VALIDATED OUTCOME WE'RE PROBING:
+//   - prepare_for_copy_to_host accepts non-camera RAW byte payloads ✓ (expected)
+//   - prepare_for_copy_to_device accepts fp32 RAW output      ⚠ (real probe)
+//   - End-to-end pipeline runs without UBWC format complaints ⚠
+//   - Output matches scalar reference within fp32 tolerance   ⚠
+
+#include "AEEStdDef.idl"
+
+interface sp_dma_raw
+{
+  long power_on_hvx();
+  long power_off_hvx();
+  long set_hvx_perf_mode_turbo();
+
+  // RAW-format frame size query (delegates to getFrameSize with eDmaFmt_RawData).
+  long getLinearFrameSize(in long width, in long height, in long stride,
+                          in long format, rout long size);
+  long getUBWCFrameSize(in long width, in long height, in long stride,
+                        in long format, rout long size);
+
+  typedef sequence<octet> u8_buffer;
+  typedef sequence<float> f32_buffer;
+
+  // Per-band metadata. Length == n_bands (height of input image).
+  //   scale_per_band[b]: fp32 scale factor for band b (host-converted from fp16)
+  //   bits_per_band[b]:  bit width of each code in band b (in {2, 3, 4, 5})
+  //   max_val_per_band[b]: sign-bias for band b = (1 << (bits-1)) - 1
+  //   coeffs_per_band[b]: number of coefficients in band b (defines output row size)
+  typedef sequence<float> band_scales_t;
+  typedef sequence<long>  band_int_t;
+
+  long run(
+      in u8_buffer packed_in,        // n_bands × packed_band_stride bytes
+      in long packed_band_stride,    // == width of the DMA frame
+      in long n_bands,               // == height of the DMA frame
+      in long is_input_ubwc,
+      in band_scales_t scale_per_band,
+      in band_int_t    bits_per_band,
+      in band_int_t    max_val_per_band,
+      in band_int_t    coeffs_per_band,
+      in long          coeffs_stride, // padded row size of the fp32 output
+      rout f32_buffer  coeffs_out,
+      in long          iterations,
+      rout unsigned long long avg_time
+  );
+};

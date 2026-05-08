@@ -1,0 +1,106 @@
+// Shannon-Prime VHT2: Exact Spectral KV Cache Compression
+// Copyright (C) 2026 Ray Daniels. All Rights Reserved.
+//
+// Licensed under the GNU Affero General Public License v3.0 (AGPLv3).
+// Commercial license available — contact raydaniels@gmail.com
+//
+// See LICENSE in the project root for full terms.
+
+// GLSL Compute Shader: Möbius CSR prediction + spinor sheet bit
+//
+// Reconstruct path: given skeleton values (already dequantized), predict
+// non-squarefree residual positions via Möbius CSR, apply spinor sign
+// correction, add dequantized residual, and scatter into the full
+// coefficient vector.
+//
+// Used in the read path of the sqfree shadow cache:
+//   dequant skeleton → THIS SHADER → vilenkin inverse → unpad → KV
+
+#version 450
+
+layout(local_size_x = 64) in;
+
+// Full coefficient vector (output — skeleton already scattered by caller)
+layout(set = 0, binding = 0) buffer Coefficients {
+    float coeffs[];
+};
+
+// Dequantized skeleton values (contiguous, sk_k floats per vector)
+layout(set = 0, binding = 1) readonly buffer SkeletonVals {
+    float skel_vals[];
+};
+
+// Dequantized residual deviation (contiguous, n_res floats per vector)
+layout(set = 0, binding = 2) readonly buffer ResidualDeviation {
+    float deviation[];
+};
+
+// Sheet bits (packed uint8, (n_res+7)/8 bytes per vector). Bit i set = flip pred.
+layout(set = 0, binding = 3) readonly buffer SheetBits {
+    uint sheet_packed[];  // Reinterpreted as bytes
+};
+
+// CSR structure (shared across all vectors — built once at init)
+layout(set = 0, binding = 4) readonly buffer CSROffsets {
+    int csr_offsets[];    // (n_res + 1,)
+};
+layout(set = 0, binding = 5) readonly buffer CSRSkelSlot {
+    int csr_skel_slot[];  // (n_terms,)
+};
+layout(set = 0, binding = 6) readonly buffer CSRMuSign {
+    int csr_mu_sign[];    // (n_terms,) — values ±1
+};
+
+// Index tables
+layout(set = 0, binding = 7) readonly buffer ResidualIndices {
+    int residual_idx[];   // (n_res,) — where in coeffs[] to write
+};
+
+layout(push_constant) uniform PushConstants {
+    uint n_res;           // Number of residual positions
+    uint sk_k;            // Skeleton size (for indexing skel_vals)
+    uint pad_dim;         // Full coefficient vector size
+    uint n_vecs;          // Batch size
+    uint use_spinor;      // 0 or 1
+};
+
+void main() {
+    uint vec_idx = gl_WorkGroupID.x;
+    uint res_i   = gl_LocalInvocationID.x;
+
+    if (vec_idx >= n_vecs || res_i >= n_res) return;
+
+    uint skel_base  = vec_idx * sk_k;
+    uint res_base   = vec_idx * n_res;
+    uint coeff_base = vec_idx * pad_dim;
+
+    // 1. Compute Möbius prediction for this residual position
+    int start = csr_offsets[res_i];
+    int end   = csr_offsets[res_i + 1];
+
+    float pred = 0.0;
+    for (int j = start; j < end; j++) {
+        pred += float(csr_mu_sign[j]) * skel_vals[skel_base + csr_skel_slot[j]];
+    }
+
+    // 2. Apply spinor: flip pred sign if sheet bit is set
+    if (use_spinor != 0u) {
+        uint byte_idx = res_i / 8u;
+        uint bit_idx  = res_i % 8u;
+        // Read the packed byte (stored as uint, extract the right byte)
+        uint word_idx = (vec_idx * ((n_res + 7u) / 8u) + byte_idx) / 4u;
+        uint word_byte = (vec_idx * ((n_res + 7u) / 8u) + byte_idx) % 4u;
+        uint packed_word = sheet_packed[word_idx];
+        uint packed_byte = (packed_word >> (word_byte * 8u)) & 0xFFu;
+
+        if ((packed_byte & (1u << bit_idx)) != 0u) {
+            pred = -pred;
+        }
+    }
+
+    // 3. Add residual deviation
+    float val = pred + deviation[res_base + res_i];
+
+    // 4. Scatter to the correct position in the coefficient vector
+    coeffs[coeff_base + residual_idx[res_i]] = val;
+}

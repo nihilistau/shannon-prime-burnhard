@@ -1,0 +1,51 @@
+// Shannon-Prime VHT2: Exact Spectral KV Cache Compression
+// Copyright (C) 2026 Ray Daniels. All Rights Reserved.
+//
+// Licensed under the GNU Affero General Public License v3.0 (AGPLv3).
+// Commercial license available — contact raydaniels@gmail.com
+//
+// See LICENSE in the project root for full terms.
+
+// GLSL Compute Shader: Möbius squarefree-first permutation
+//
+// Reorders VHT2 coefficients so squarefree indices come first.
+// This is a gather operation: output[i] = input[order[i]]
+//
+// The Möbius mask is a property of the VHT2 spectrum, not the model.
+// Cross-platform invariant: K correlation 0.997 on both hd=128 and hd=64.
+
+#version 450
+
+// 256 threads per workgroup covers the full SP_MAX_HEAD_DIM; the strided
+// loop below also handles any future n > local_size_x without a second
+// dispatch.
+layout(local_size_x = 256) in;
+
+layout(set = 0, binding = 0) readonly buffer Input {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1) writeonly buffer Output {
+    float output_data[];
+};
+
+layout(set = 0, binding = 2) readonly buffer Order {
+    int order[];  // Permutation table: order[i] = source index
+};
+
+layout(push_constant) uniform PushConstants {
+    uint n;         // Vector length
+    uint n_vecs;    // Number of vectors
+};
+
+void main() {
+    uint vec_idx = gl_WorkGroupID.x;
+    uint tid     = gl_LocalInvocationID.x;
+
+    if (vec_idx >= n_vecs) return;
+
+    uint base = vec_idx * n;
+    for (uint i = tid; i < n; i += gl_WorkGroupSize.x) {
+        output_data[base + i] = input_data[base + uint(order[i])];
+    }
+}

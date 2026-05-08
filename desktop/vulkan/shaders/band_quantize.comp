@@ -1,0 +1,136 @@
+// Shannon-Prime VHT2: Exact Spectral KV Cache Compression
+// Copyright (C) 2026 Ray Daniels. All Rights Reserved.
+//
+// Licensed under the GNU Affero General Public License v3.0 (AGPLv3).
+// Commercial license available — contact raydaniels@gmail.com
+//
+// See LICENSE in the project root for full terms.
+
+// GLSL Compute Shader: VHT2 Banded Quantization
+//
+// One workgroup per vector. Thread 0 serialises the bit-packing (the
+// production optimisation is warp-shuffle parallel packing — deferred).
+//
+// v1.05 — widened to match the CPU reference:
+//   - up to 16 bands (matches SP_MAX_BANDS), bit widths as a push-constant
+//     array rather than four named scalars
+//   - per-band span absorbs head_dim % n_bands into the last band so
+//     10 bands @ pad_dim=154 leave no orphan tail coefficients
+//   - UB-safe shift on exact 32-bit alignment at the word-boundary flush
+
+#version 450
+
+layout(local_size_x = 256) in; // Must be >= max(band_size). hd <= 256.
+
+layout(set = 0, binding = 0) readonly buffer Input {
+    float input_data[];
+};
+
+layout(set = 0, binding = 1) writeonly buffer Output {
+    uint output_data[];  // Packed output (uint32 stream)
+};
+
+layout(push_constant) uniform PushConstants {
+    uint n;             // Logical vector length (head_dim)
+    uint n_bands;       // 1..16
+    uint total_words;   // Output uint words per vector
+    uint _pad;
+    uint band_bits[16];
+};
+
+shared float smem_abs[256];  // For absmax reduction
+shared float band_scale;     // Result of reduction, broadcast to thread 0
+
+uint get_band_bits(uint band) { return band_bits[band]; }
+
+void main() {
+    uint vec_idx = gl_WorkGroupID.x;
+    uint tid     = gl_LocalInvocationID.x;
+
+    uint in_base  = vec_idx * n;
+    uint out_base = vec_idx * total_words;
+
+    // Typical band size; the last band absorbs the remainder.
+    uint typical_sz = n / n_bands;
+
+    uint out_word_offset = 0u;
+
+    for (uint b = 0u; b < n_bands; b++) {
+        uint bits   = get_band_bits(b);
+        uint max_val = (1u << (bits - 1u)) - 1u;
+
+        uint band_start = b * typical_sz;
+        uint band_sz    = (b == n_bands - 1u)
+                          ? (n - band_start)
+                          : typical_sz;
+
+        // Phase 1: Find max(abs) in this band via shared-memory reduction.
+        // Only threads with tid < band_sz participate in the reduction
+        // values; the rest contribute a 0.0 sentinel.
+        float my_abs = (tid < band_sz)
+                       ? abs(input_data[in_base + band_start + tid])
+                       : 0.0;
+        smem_abs[tid] = my_abs;
+        barrier();
+
+        // Bitonic-ish reduction. max_threads / 2 = 128 covers band_sz up to 256.
+        for (uint s = 128u; s > 0u; s >>= 1u) {
+            if (tid < s && tid + s < band_sz) {
+                smem_abs[tid] = max(smem_abs[tid], smem_abs[tid + s]);
+            }
+            barrier();
+        }
+
+        if (tid == 0u) {
+            float amax = smem_abs[0];
+            band_scale = (amax > 0.0) ? amax / float(max_val) : 0.0;
+
+            // Store scale as fp32 in the first word for this band (the CPU
+            // reference stores fp16; test_vulkan's CPU-fallback path owns
+            // the fp16 encoding, so we only reach here on the GPU dispatch
+            // which round-trips within the same shader pair).
+            output_data[out_base + out_word_offset] = floatBitsToUint(band_scale);
+            out_word_offset++;
+        }
+        barrier();
+
+        // Phase 2: sequential bit-pack. Thread 0 owns the serial packer.
+        if (tid == 0u) {
+            float inv_scale = (band_scale > 0.0) ? 1.0 / band_scale : 0.0;
+
+            uint bit_buffer = 0u;
+            uint bit_pos    = 0u;
+
+            for (uint i = 0u; i < band_sz; i++) {
+                float val = input_data[in_base + band_start + i];
+                int   q   = int(round(val * inv_scale));
+                q = clamp(q, -int(max_val), int(max_val));
+                uint u = uint(q + int(max_val));
+
+                bit_buffer |= (u << bit_pos);
+                bit_pos   += bits;
+
+                // Flush 32-bit aligned words. GLSL makes `x >>= 32u` UB on
+                // a uint, so we rebuild bit_buffer from the remaining bits
+                // of the current element rather than shifting.
+                while (bit_pos >= 32u) {
+                    output_data[out_base + out_word_offset] = bit_buffer;
+                    out_word_offset++;
+
+                    uint remaining = bit_pos - 32u;
+                    bit_buffer = (remaining > 0u)
+                                 ? (u >> (bits - remaining))
+                                 : 0u;
+                    bit_pos    = remaining;
+                }
+            }
+
+            // Flush tail.
+            if (bit_pos > 0u) {
+                output_data[out_base + out_word_offset] = bit_buffer;
+                out_word_offset++;
+            }
+        }
+        barrier();
+    }
+}

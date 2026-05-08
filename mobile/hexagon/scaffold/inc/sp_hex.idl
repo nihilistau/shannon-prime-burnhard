@@ -1,0 +1,302 @@
+//============================================================================
+/// @file sp_hex.idl
+///
+/// Shannon-Prime VHT2 KV cache compression - Hexagon DSP FastRPC interface.
+//============================================================================
+//
+// Copyright (C) 2026 Ray Daniels. All Rights Reserved.
+// Licensed under the GNU Affero General Public License v3.0 (AGPLv3).
+// Commercial license available - contact raydaniels@gmail.com.
+//
+// Forked from the Hexagon SDK 5.5.6.0 calculator/S22U sample IDL pattern;
+// the Qualcomm-provided AEEStdDef and remote IDLs are untouched and remain
+// under their original Qualcomm copyright.
+
+                                                           //qidl copyright
+//% Copyright (c) 2012-2014, 2020 Qualcomm Technologies, Inc.
+                                                           //qidl nested=false
+//% All Rights Reserved.
+//% Qualcomm Confidential and Proprietary
+
+#include "AEEStdDef.idl"
+#include "remote.idl"
+
+// All vectors are fp32 contiguous arrays. head_dim must be a power of 2
+// and at least 8 (matches SP math core invariants ? see core/shannon_prime.h).
+//
+// Smoke-test entry: round_trip_f32 takes an input vector and returns the
+// reconstruction after the full SP pipeline (VHT2 forward ? band quantize
+// ? band dequantize ? VHT2 inverse). Numerically reversible to fp32 epsilon
+// only when no quantization is applied; for production band configs this
+// reproduces the same reconstruction error profile as the math core.
+//
+// Open/close lifecycle is inherited from remote_handle64 ? the FastRPC layer
+// generates sp_hex_open / sp_hex_close that the host calls before the first
+// method invocation and after the last.
+
+interface sp_hex : remote_handle64 {
+
+   // -------------------------------------------------------------------
+   // Smoke-test entry ? exercises VHT2 forward + inverse end-to-end.
+   // For the scaffold, no quantization is applied; out_vec ? in_vec to
+   // fp32 epsilon. Returns 0 on success.
+   // -------------------------------------------------------------------
+   long round_trip_f32(in sequence<float> in_vec,
+                       in long head_dim,
+                       rout sequence<float> out_vec);
+
+   // -------------------------------------------------------------------
+   // VHT2 forward butterfly. Self-inverse: applying twice yields the
+   // original input (the smoke test exploits this). Operates in-place on
+   // the rout sequence; n is the vector length and must be a power of 2.
+   // -------------------------------------------------------------------
+   long vht2_forward(rout sequence<float> data, in long n);
+
+   // -------------------------------------------------------------------
+   // Band quantize: VHT2 coefficients ? packed banded int8 bytes with
+   // per-band scales prepended. Layout matches sp_band_quantize in the
+   // SP math core (see core/shannon_prime.h:276). For the scaffold the
+   // DSP-side impl is a scalar reference; an HVX kernel replaces it once
+   // perf work begins.
+   // -------------------------------------------------------------------
+   long band_quantize(in sequence<float> coeffs,
+                      in long head_dim,
+                      rout sequence<octet> out_packed);
+
+   // -------------------------------------------------------------------
+   // Band dequantize. max_bands < 0 means "all bands" (= sp_band_dequantize);
+   // 0 <= max_bands < n_bands triggers the partial path used by the phase 3
+   // attention short-circuit. Maps onto sp_band_dequantize_partial in the
+   // math core.
+   // -------------------------------------------------------------------
+   long band_dequantize(in sequence<octet> in_packed,
+                        in long head_dim,
+                        in long max_bands,
+                        rout sequence<float> out_coeffs);
+
+   // -------------------------------------------------------------------
+   // VTCM residency report. Used to verify HAP_request_VTCM at session
+   // open landed a region (otherwise HVX kernels run against DDR with
+   // no perf benefit). Returns:
+   //
+   //   bytes_total      ? total VTCM on this DSP variant (V69 ? 8 MB)
+   //   bytes_avail      ? currently unallocated VTCM (other DSP sessions
+   //                      and system services compete for this)
+   //   bytes_acquired   ? bytes this session reserved at open (0 if the
+   //                      acquire call failed; non-zero means we have
+   //                      our region and HVX kernels can target it)
+   // -------------------------------------------------------------------
+   long vtcm_status(rout long long bytes_total,
+                    rout long long bytes_avail,
+                    rout long long bytes_acquired);
+
+   // -------------------------------------------------------------------
+   // Cycle bench. Runs the VHT2 forward butterfly through both the
+   // scalar reference path and the HVX-vectorised path, reports total
+   // pcycles consumed by each (across `iterations` calls) using
+   // HAP_perf_get_pcycles. Caller divides by `iterations` to get
+   // per-call cost; ratio of scalar/hvx is the speedup factor.
+   //
+   // Each iteration includes a memcpy from a stable input buffer so the
+   // timing isolates the transform itself rather than measuring repeated
+   // applications on already-transformed data (VHT2 is self-inverse ?
+   // running it twice on the same buffer hits a different numerical
+   // path).
+   // -------------------------------------------------------------------
+   long vht2_bench(in long head_dim,
+                   in long iterations,
+                   rout long long scalar_pcycles,
+                   rout long long hvx_pcycles);
+
+   // -------------------------------------------------------------------
+   // compress_f32 ? single-call full encode pipeline.
+   //
+   //   in_vec  --VHT2-->  coeffs  --band_quantize-->  packed bytes
+   //
+   // Used by the host's sp_hexagon_cache_write_{k,v} wrappers to land
+   // a per-position raw fp32 K/V vector into compressed bytes in ONE
+   // FastRPC dispatch ? half the IPC cost of calling vht2_forward and
+   // band_quantize separately. The packed layout is bit-identical to
+   // the math core's sp_band_quantize so storage emitted here is
+   // interchangeable with the CPU shadow cache.
+   //
+   // The packed_used out-parameter is set to bc.total_bytes so the
+   // caller knows exactly how many bytes were written (the rout
+   // sequence length is whatever capacity the caller supplied; the
+   // header treats the trailing region as undefined).
+   // -------------------------------------------------------------------
+   long compress_f32(in sequence<float> in_vec,
+                     in long head_dim,
+                     rout sequence<octet> out_packed,
+                     rout long packed_used);
+
+   // -------------------------------------------------------------------
+   // decompress_f32 ? single-call full decode pipeline.
+   //
+   //   packed --band_dequantize--> coeffs --VHT2 (self-inverse)--> out_vec
+   //
+   // Used by the host's sp_hexagon_cache_read_{k,v}{,_partial} wrappers
+   // to reconstruct a per-position fp32 K/V vector from compressed bytes
+   // in one FastRPC dispatch. max_bands < 0 (or >= n_bands) is "all
+   // bands" (= sp_band_dequantize); 0 <= max_bands < n_bands triggers
+   // the partial reconstruction path used by the phase 3 attention
+   // short-circuit.
+   //
+   // The packed_in capacity must cover bc.total_bytes for the band
+   // config implicit in head_dim (the scaffold uses {5,5,4,3} ship
+   // defaults today; see sp_hex_imp.c).
+   // -------------------------------------------------------------------
+   long decompress_f32(in sequence<octet> packed_in,
+                       in long head_dim,
+                       in long max_bands,
+                       rout sequence<float> out_vec);
+
+   // -------------------------------------------------------------------
+   // compress_f32_batch ? batched encode pipeline. Loops the
+   // compress_f32 kernel internally over n_vectors so the host
+   // amortises the FastRPC dispatch cost over a chunk of K-cache
+   // writes. Used by the post-decode hook on prefill (n_pos > 1).
+   //
+   // Layout:
+   //   in_vecs    = n_vectors * head_dim contiguous fp32
+   //   out_packed = n_vectors * bc.total_bytes contiguous octets
+   //   packed_used = n_vectors * bc.total_bytes on success
+   //
+   // n_vectors is the number of per-position K/V vectors in the
+   // chunk. Bridge picks chunk size based on FastRPC payload budget
+   // and VTCM headroom; today the default is 32 (env-overridable).
+   // -------------------------------------------------------------------
+   long compress_f32_batch(in sequence<float> in_vecs,
+                           in long head_dim,
+                           in long n_vectors,
+                           rout sequence<octet> out_packed,
+                           rout long packed_used);
+
+   // -------------------------------------------------------------------
+   // decompress_f32_batch ? batched decode pipeline. Mirror of
+   // compress_f32_batch for the read path. Loops decompress_f32
+   // internally over n_vectors. Used by partial-reconstruction paths
+   // (e.g. phase-3 attention short-circuit) that need a contiguous
+   // run of positions in one dispatch.
+   //
+   // Layout:
+   //   packed_in = n_vectors * bc.total_bytes contiguous octets
+   //   out_vecs  = n_vectors * head_dim contiguous fp32
+   //
+   // max_bands applies to every vector in the batch (per-vector
+   // partial fidelity is a future extension if needed).
+   // -------------------------------------------------------------------
+   long decompress_f32_batch(in sequence<octet> packed_in,
+                             in long head_dim,
+                             in long n_vectors,
+                             in long max_bands,
+                             rout sequence<float> out_vecs);
+
+   // -------------------------------------------------------------------
+   // kq_matmul_fused ? Phase 1.6/1.7 harness intercept replacement.
+   // Single FastRPC dispatch per attention op, replaces the custom op's
+   // ARM-scalar inner loop with a DSP fused decompress-matmul that runs
+   // on HVX once the kernel upgrade lands. K archive lives in rpcmem
+   // (Phase 1.6 made it persistent), so DSP reads it zero-copy via SMMU.
+   //
+   // Args:
+   //   q_vec     : n_q * head_dim contiguous fp32 (Q rows from build_attn_mha
+   //               after permute, ready for dot products against K).
+   //   k_packed  : n_kv * total_bytes_per_pos packed K bytes
+   //               (4-band 5/5/4/3 K config = 42 bytes at hd=128).
+   //   head_dim  : pow2 in [8, 1024].
+   //   n_kv      : K positions in this attention window.
+   //   n_q       : Q heads/queries.
+   //   kq_scores : n_kv * n_q fp32 output, layout matches ggml mul_mat
+   //               result [n_kv, n_q] column-major.
+   //
+   // DSP loop (HVX target): kv outer, q inner so each decompressed K
+   // row stays VTCM-resident and is reused across all Q heads. First
+   // implementation is scalar reference for IDL-wiring validation; HVX
+   // kernel slots in transparently once correctness passes.
+   // -------------------------------------------------------------------
+   long kq_matmul_fused(in sequence<float> q_vec,
+                        in sequence<octet> k_packed,
+                        in long head_dim,
+                        in long n_kv,
+                        in long n_q,
+                        rout sequence<float> kq_scores);
+
+
+   // -------------------------------------------------------------------
+   // V-specific compress/decompress: V uses a different band config than
+   // K (1 band, 3 bits vs K's 4 bands at 5/5/4/3). compress_f32 hard-
+   // codes K's config and rejects V's smaller capacity. These methods
+   // bake in V's config so the host can compress V vectors on the DSP
+   // without the bridge having to bypass to host-only fp32 storage.
+   //
+   // For head_dim=64: V packed bytes = 26 (vs K's 42); 3.0x compression
+   // recovered on V cache memory.
+   // -------------------------------------------------------------------
+   long compress_f32_v(in sequence<float> in_vec,
+                       in long head_dim,
+                       rout sequence<octet> out_packed,
+                       rout long packed_used);
+
+   long decompress_f32_v(in sequence<octet> packed_in,
+                         in long head_dim,
+                         in long max_bands,
+                         rout sequence<float> out_vec);
+
+   long compress_f32_v_batch(in sequence<float> in_vecs,
+                             in long head_dim,
+                             in long n_vectors,
+                             rout sequence<octet> out_packed,
+                             rout long packed_used);
+
+   long decompress_f32_v_batch(in sequence<octet> packed_in,
+                               in long head_dim,
+                               in long n_vectors,
+                               in long max_bands,
+                               rout sequence<float> out_vecs);
+
+   // -------------------------------------------------------------------
+   // logit_argmax_u16 — Phase 6: HVX argmax over a UFIXED_POINT_16 logit
+   // row. Called after Split 4 HTP execute for greedy token selection.
+   //
+   // dtype 1046 (UFIXED_POINT_16) raw uint16 ordering is monotone with
+   // fp32 ordering (same scale+offset for all vocab elements), so argmax
+   // on raw uint16 == argmax on decoded fp32. No decode needed.
+   //
+   // logits_row : one row of the [ar, vocab_size] logit tensor (ION-backed
+   //              for zero-copy DSP access via SMMU). Length = vocab_size.
+   // vocab_size : vocabulary size (151,936 for Qwen3-4B).
+   // token_id   : argmax result (0-based, first on tie).
+   //
+   // HVX perf: ~2,374 vector ops at 64 uint16/vector on V69.
+   // -------------------------------------------------------------------
+   long logit_argmax_u16(in sequence<unsigned short> logits_row,
+                         in long vocab_size,
+                         rout long token_id);
+
+   // -------------------------------------------------------------------
+   // probe_dma_raw — Phase 7B: raw DMA engine accessibility probe.
+   //
+   // Binary question: does the Hexagon DMA engine accept raw byte buffers
+   // in unsigned PD on this device? Halide DMA is blocked (EPERM), so
+   // we probe the dmaWrapper.h layer directly.
+   //
+   // src_buf        : SMMU-mapped rpcmem buffer reinterpreted as uint16
+   //                  (IDL uses sequence<unsigned short> so the existing
+   //                  _stub_method_10 / _skel_method templates handle
+   //                  the marshalling — no new qaic types needed).
+   // src_len_words  : number of uint16 words in src_buf (byte count / 2).
+   // timing_us      : wall-clock time for the DMA transfer attempt (µs).
+   //                  Set to -1 if DMA engine allocation fails before
+   //                  the transfer attempt.
+   //
+   // Returns 0 if DMA transfer succeeded, negative error code otherwise.
+   //   -1  : hDmaWrapper_AllocDma returned NULL (engine unavailable)
+   //   -2  : nDmaWrapper_DmaTransferSetup failed
+   //   -3  : nDmaWrapper_Move failed
+   //   -4  : nDmaWrapper_Wait failed
+   // -------------------------------------------------------------------
+   long probe_dma_raw(in sequence<unsigned short> src_buf,
+                      in long src_len_words,
+                      rout long timing_us);
+};
