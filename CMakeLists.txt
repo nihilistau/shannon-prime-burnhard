@@ -294,7 +294,7 @@ if(SP_BUILD_CLI)
     add_executable(sp-engine desktop/engine/src/cli/main.cpp)
     target_link_libraries(sp-engine PRIVATE sp_engine)
     if(MSVC)
-        target_link_options(sp-engine PRIVATE "/STACK:8388608")
+        target_link_options(sp-engine PRIVATE "/STACK:33554432")
     endif()
 endif()
 
