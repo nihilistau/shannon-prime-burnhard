@@ -1472,32 +1472,26 @@ static ggml_tensor* build_block_gdn(ggml_context* gctx,
     ggml_tensor* beta     = ggml_sigmoid(gctx, beta_raw);
     beta = ggml_reshape_4d(gctx, beta, 1, num_v_heads, n, 1);
 
-    // --- Gated delta-rule recurrence -----------------------------
-    // Two paths: autoregressive (n==1, decode) and chunked (n>1, prefill).
+    // --- Gated delta-rule recurrence (fused op) -------------------
+    // Uses the ggml_gated_delta_net fused operator for BOTH decode (n==1)
+    // and prefill (n>1). The fused kernel processes tokens sequentially
+    // per head with proper threading. This replaces the old split path
+    // where AR decode used manual graph ops and prefill used a chunked
+    // matmul approach (which crashed in ggml_solve_tri / ggml_set_inplace
+    // on ggml 0.9.11).
     //
-    // The fused ggml_gated_delta_net kernel processes all tokens
-    // sequentially and is numerically unstable for n > ~35 due to
-    // cumulative floating-point error across the exp(g) state scaling.
-    // llama.cpp avoids this by using a chunked matmul approach
-    // (build_delta_net_chunking in delta-net-base.cpp) for prefill.
-    //
-    // We use ggml_gated_delta_net ONLY for n==1 (single-token decode)
-    // where it is stable and fast. For n>1 we use the chunked path.
+    // The fused op was stabilised in ggml 0.11.0 (llama.cpp b8763) and
+    // is now the recommended path for all token counts — matches
+    // llama.cpp's delta-net-base.cpp build_delta_net_fused().
 
     const int64_t S_k = head_qk_dim;
     const int64_t S_v = head_v_dim;
-    // After the GQA repeat above, Q and K now have num_v_heads heads
-    // (same as V), so H_k == H_v for all downstream ops.
-    const int64_t H_k = num_v_heads;  // post-repeat
+    const int64_t H_k = num_v_heads;  // post-GQA-repeat
     const int64_t H_v = num_v_heads;
     const int64_t n_seqs = 1;
 
-    // Reshape ssm_state_in to 4D for the chunked/AR math.
-    // Flat layout: [S_v * S_v * H_v] → [S_v, S_v, H_v, 1]
+    // Reshape ssm_state_in to 4D: [S_v * S_v * H_v] → [S_v, S_v, H_v, 1]
     ggml_tensor* s = ggml_reshape_4d(gctx, ssm_state_in, S_v, S_v, H_v, n_seqs);
-
-    ggml_tensor* attn;       // output:  [S_v, H_v, n, 1]
-    ggml_tensor* s_new;      // updated state: [S_v, S_v, H_v, 1]
 
     if (sp_gdn_diag_enabled()) {
         std::fprintf(stderr, "[sp-gdn-diag] build_block_gdn: n=%d S_k=%lld S_v=%lld H_k=%lld H_v=%lld n_seqs=%lld "
@@ -1512,218 +1506,44 @@ static ggml_tensor* build_block_gdn(ggml_context* gctx,
                      (long long)s->ne[0], (long long)s->ne[1], (long long)s->ne[2], (long long)s->ne[3]);
     }
 
-    if (n == 1) {
-        // ----- Autoregressive path (single-token decode) -----
-        // Matches llama.cpp's build_delta_net_autoregressive exactly.
-        const float scale = 1.0f / sqrtf((float)S_k);
-        ggml_tensor* q_ar = ggml_scale(gctx, Qc, scale);
+    // Scale Q by 1/sqrt(S_k) — the fused kernel doesn't do this internally.
+    const float scale = 1.0f / sqrtf((float)S_k);
+    ggml_tensor* q_scaled = ggml_scale(gctx, Qc, scale);
 
-        q_ar = ggml_permute(gctx, q_ar, 0, 2, 1, 3); // [S_k, 1, H_k, 1]
-        ggml_tensor* k_ar = ggml_permute(gctx, Kc, 0, 2, 1, 3);
-        ggml_tensor* v_ar = ggml_permute(gctx, Vc, 0, 2, 1, 3);
+    // Input layout expected by ggml_gated_delta_net:
+    //   q, k:  [S_k, H, n_tokens, n_seqs]  — contiguous rows
+    //   v:     [S_v, H, n_tokens, n_seqs]
+    //   g:     [1,   H, n_tokens, n_seqs]   (scalar per head) or [S_v, H, n, n_seqs] (KDA)
+    //   beta:  [1,   H, n_tokens, n_seqs]
+    //   state: [S_v, S_v, H, n_seqs]
+    // Our tensors are already in this layout after the reshape at lines 1433-1435.
 
-        // g: [1, H_v, 1, 1] → [1, 1, H_v, 1]
-        ggml_tensor* g_ar = ggml_reshape_4d(gctx, g, 1, 1, H_v, n_seqs);
-        ggml_tensor* b_ar = ggml_reshape_4d(gctx, beta, 1, 1, H_v, n_seqs);
+    ggml_tensor* result = ggml_gated_delta_net(gctx, q_scaled, Kc, Vc, g, beta, s);
 
-        // s = s * exp(g)
-        g_ar = ggml_exp(gctx, g_ar);
-        s = ggml_mul(gctx, s, g_ar);
+    // The result tensor is a flat concatenation:
+    //   [0 .. S_v*H*n_tokens*n_seqs)          = attention output
+    //   [S_v*H*n_tokens*n_seqs .. end)         = new state
+    // Extract output: [S_v, H_v, n_tokens, n_seqs]
+    ggml_tensor* attn = ggml_view_4d(gctx, result,
+            S_v, H_v, (int64_t)n, n_seqs,
+            ggml_row_size(result->type, S_v),
+            ggml_row_size(result->type, S_v * H_v),
+            ggml_row_size(result->type, S_v * H_v * n), 0);
 
-        // sk = sum_rows(s * k)  → [1, S_v, H_v, 1]
-        ggml_tensor* sk = ggml_mul(gctx, s, k_ar);
-        sk = ggml_sum_rows(gctx, sk);
-
-        // d = (v - sk^T) * beta  → [S_v, 1, H_v, 1]
-        ggml_tensor* d = ggml_sub(gctx, v_ar, ggml_transpose(gctx, sk));
-        d = ggml_mul(gctx, d, b_ar);
-
-        // s = s + k * d^T
-        ggml_tensor* d_t = ggml_transpose(gctx, d);
-        ggml_tensor* k_rep = ggml_repeat(gctx, k_ar, s);
-        ggml_tensor* kd = ggml_mul(gctx, k_rep, d_t);
-        s = ggml_add(gctx, s, kd);
-
-        // o = sum_rows(s * q)
-        ggml_tensor* s_q = ggml_mul(gctx, s, q_ar);
-        ggml_tensor* o   = ggml_sum_rows(gctx, s_q);
-        attn = ggml_permute(gctx, o, 2, 0, 1, 3);  // [S_v, H_v, 1, 1]
-
-        s_new = s;
-    } else {
-        // ----- Chunked path (prefill, n > 1) -----
-        // Ported from llama.cpp delta-net-base.cpp build_delta_net_chunking.
-        // Processes tokens in chunks of 64, using matrix ops for numerical
-        // stability instead of the sequential scan.
-        const float scale = 1.0f / sqrtf((float)S_k);
-        ggml_tensor* q_ch = ggml_scale(gctx, Qc, scale);
-
-        q_ch = ggml_permute(gctx, q_ch, 0, 2, 1, 3); // [S_k, n, H_k, 1]
-        ggml_tensor* k_ch = ggml_permute(gctx, Kc, 0, 2, 1, 3);
-        ggml_tensor* v_ch = ggml_permute(gctx, Vc, 0, 2, 1, 3);
-        ggml_tensor* g_ch = ggml_permute(gctx, g, 0, 2, 1, 3);    // [1, n, H_v, 1]
-        ggml_tensor* b_ch = ggml_permute(gctx, beta, 0, 2, 1, 3); // [1, n, H_v, 1]
-
-        const int CS = 64;
-        const int pad = (CS - n % CS) % CS;
-        const int n_chunks = (n + pad) / CS;
-
-        q_ch = ggml_pad(gctx, q_ch, 0, pad, 0, 0);
-        k_ch = ggml_pad(gctx, k_ch, 0, pad, 0, 0);
-        v_ch = ggml_pad(gctx, v_ch, 0, pad, 0, 0);
-        g_ch = ggml_pad(gctx, g_ch, 0, pad, 0, 0);
-        b_ch = ggml_pad(gctx, b_ch, 0, pad, 0, 0);
-
-        ggml_tensor* v_b  = ggml_mul(gctx, v_ch, b_ch);
-        ggml_tensor* k_b  = ggml_mul(gctx, k_ch, b_ch);
-
-        q_ch = ggml_reshape_4d(gctx, q_ch, S_k, CS, n_chunks, H_k * n_seqs);
-        k_ch = ggml_reshape_4d(gctx, k_ch, S_k, CS, n_chunks, H_k * n_seqs);
-        k_b  = ggml_reshape_4d(gctx, k_b,  S_k, CS, n_chunks, H_v * n_seqs);
-        v_ch = ggml_reshape_4d(gctx, v_ch, S_v, CS, n_chunks, H_v * n_seqs);
-        v_b  = ggml_reshape_4d(gctx, v_b,  S_v, CS, n_chunks, H_v * n_seqs);
-
-        g_ch = ggml_reshape_4d(gctx, g_ch, g_ch->ne[0], CS, n_chunks, H_v * n_seqs);
-        b_ch = ggml_reshape_4d(gctx, b_ch, 1,            CS, n_chunks, H_v * n_seqs);
-
-        // Cumulative sum of g along time axis (within each chunk).
-        // g_ch is [1, CS, n_chunks, H_v*n_seqs]; transpose to put CS
-        // on dim0 for ggml_cumsum, then cumsum → [CS, 1, n_chunks, H_v*n_seqs].
-        ggml_tensor* g_cs = ggml_cumsum(gctx, ggml_cont(gctx, ggml_transpose(gctx, g_ch)));
-
-        // Non-KDA path (scalar g per head): g_cs is [CS, 1, n_chunks, H_v*n_seqs]
-        ggml_tensor* g_cs_i = g_cs;
-        ggml_tensor* g_cs_j = ggml_reshape_4d(gctx, g_cs, 1, CS, n_chunks, H_v * n_seqs);
-        g_cs_j = ggml_repeat_4d(gctx, g_cs_j, CS, CS, n_chunks, H_v * n_seqs);
-
-        // decay_mask = exp(tri_lower_diag(g_cs_j - g_cs_i))
-        ggml_tensor* decay_mask = ggml_sub(gctx, g_cs_j, g_cs_i);
-        decay_mask = ggml_tri(gctx, decay_mask, GGML_TRI_TYPE_LOWER_DIAG);
-        decay_mask = ggml_exp(gctx, decay_mask);
-
-        // kb = k^T @ k_b * decay_mask  [CS, CS, n_chunks, H_k*n_seqs]
-        ggml_tensor* kb = ggml_mul_mat(gctx, k_ch, k_b);
-        kb = ggml_mul(gctx, kb, decay_mask);
-
-        // kq = k^T @ q * decay_mask  [CS, CS, n_chunks, H_k*n_seqs]
-        ggml_tensor* kq = ggml_mul_mat(gctx, k_ch, q_ch);
-        kq = ggml_mul(gctx, kq, decay_mask);
-
-        kq = ggml_tri(gctx, kq, GGML_TRI_TYPE_LOWER_DIAG);
-
-        // Solve the linear system for numerically stable recurrence.
-        // attn = tri_lower(kb)
-        ggml_tensor* attn_ch = ggml_tri(gctx, kb, GGML_TRI_TYPE_LOWER);
-
-        // identity matrix from first chunk row
-        ggml_tensor* identity = ggml_view_1d(gctx, attn_ch, CS, 0);
-        identity = ggml_fill(gctx, identity, 1.0f);
-        identity = ggml_diag(gctx, identity);
-
-        ggml_tensor* lhs = ggml_add(gctx, attn_ch, identity);
-
-        attn_ch = ggml_neg(gctx, attn_ch);
-
-        ggml_tensor* lin_solve = ggml_solve_tri(gctx, lhs, attn_ch, true, true, false);
-        attn_ch = ggml_add(gctx, lin_solve, identity);
-
-        // v = v_b^T @ attn_ch  [S_v, CS, n_chunks, H_v*n_seqs]
-        v_ch = ggml_mul_mat(gctx, ggml_cont(gctx, ggml_transpose(gctx, v_b)), attn_ch);
-
-        // g_exp for inter-chunk state propagation
-        ggml_tensor* g_exp = ggml_exp(gctx, g_cs);
-
-        k_b = ggml_cont(gctx, ggml_transpose(gctx, k_b));
-
-        // kbg = k_b * g_exp  [CS, S_k, n_chunks, H_k*n_seqs]
-        ggml_tensor* kbg = ggml_mul(gctx, k_b, g_exp);
-
-        // k_cd = kbg^T @ attn_ch  [S_k, CS, n_chunks, H_k*n_seqs]
-        ggml_tensor* k_cd = ggml_mul_mat(gctx, kbg, attn_ch);
-
-        // q * exp(g)^T for inter-chunk query
-        ggml_tensor* g_exp_t = ggml_cont(gctx, ggml_transpose(gctx, g_exp));
-        ggml_tensor* q_g_exp = ggml_mul(gctx, q_ch, g_exp_t);
-
-        // g_last: last element in g_cumsum along CS dimension
-        ggml_tensor* g_last = ggml_view_4d(gctx, g_cs, 1, g_cs->ne[1], g_cs->ne[2], g_cs->ne[3],
-                g_cs->nb[1], g_cs->nb[2], g_cs->nb[3],
-                ggml_row_size(g_cs->type, g_cs->ne[0] - 1));
-        g_last = ggml_cont(gctx, g_last);
-
-        ggml_tensor* g_last_exp_t = ggml_transpose(gctx, ggml_exp(gctx, g_last));
-
-        // g_diff = -(g_cs - g_last) for key decay within chunk
-        ggml_tensor* g_diff = ggml_neg(gctx, ggml_sub(gctx, g_cs, g_last));
-        ggml_tensor* g_diff_exp_t = ggml_cont(gctx, ggml_transpose(gctx, ggml_exp(gctx, g_diff)));
-
-        // kg = k * exp(g_diff)^T  [S_k, CS, n_chunks, H_v*n_seqs]
-        ggml_tensor* kg = ggml_mul(gctx, k_ch, g_diff_exp_t);
-        ggml_tensor* kg_t = ggml_cont(gctx, ggml_transpose(gctx, kg));
-
-        s = ggml_reshape_4d(gctx, s, S_v, S_v, 1, H_v * n_seqs);
-
-        // v_t for chunk loop [CS, S_v, n_chunks, H_v*n_seqs]
-        ggml_tensor* v_t = ggml_cont(gctx, ggml_transpose(gctx, v_ch));
-
-        // --- Per-chunk loop: inter-chunk state propagation ---
-        for (int chunk = 0; chunk < n_chunks; chunk++) {
-            // get_slice_2d: view into 3rd dimension at index `chunk`
-            auto slice = [&](ggml_tensor* t, int c) -> ggml_tensor* {
-                return ggml_view_4d(gctx, t, t->ne[0], t->ne[1], 1, t->ne[3],
-                    t->nb[1], t->nb[2], t->nb[3], t->nb[2] * c);
-            };
-
-            ggml_tensor* ch_k_cd    = slice(k_cd,    chunk);
-            ggml_tensor* ch_v_t     = slice(v_t,     chunk);
-            ggml_tensor* ch_kq      = slice(kq,      chunk);
-            ggml_tensor* ch_q_g_exp = slice(q_g_exp, chunk);
-            ggml_tensor* ch_kg_t    = slice(kg_t,    chunk);
-
-            // v_prime = k_cd^T @ s
-            ggml_tensor* v_t_p = ggml_mul_mat(gctx, ch_k_cd, s);
-
-            // v_new = v_chunk - v_prime
-            ggml_tensor* v_t_new = ggml_sub(gctx, ch_v_t, v_t_p);
-
-            // v_attn = v_new^T @ kq_chunk (intra-chunk)
-            ggml_tensor* v_attn = ggml_mul_mat(gctx, v_t_new, ch_kq);
-
-            // attn_inter = s^T @ q_g_exp_chunk (inter-chunk)
-            ggml_tensor* attn_inter = ggml_mul_mat(gctx, s, ch_q_g_exp);
-
-            // output for this chunk
-            ggml_tensor* o_ch = ggml_add(gctx, attn_inter, v_attn);
-
-            // Write chunk output back into v_ch
-            v_ch = ggml_set_inplace(gctx, v_ch, o_ch, v_ch->nb[1], v_ch->nb[2], v_ch->nb[3],
-                                    chunk * v_ch->nb[2]);
-
-            // Update state: s = s * exp(g_last) + kg^T @ v_new
-            ggml_tensor* kgv = ggml_mul_mat(gctx, ch_kg_t, v_t_new);
-
-            ggml_tensor* ch_g_last_exp_t = slice(g_last_exp_t, chunk);
-            s = ggml_mul(gctx, s, ch_g_last_exp_t);
-            s = ggml_add(gctx, s, kgv);
-        }
-
-        // Truncate padded tokens and permute to output layout
-        ggml_tensor* o = ggml_view_4d(gctx, v_ch,
-                S_v, n, H_v, n_seqs,
-                ggml_row_size(v_ch->type, S_v),
-                ggml_row_size(v_ch->type, S_v * CS * n_chunks),
-                ggml_row_size(v_ch->type, S_v * CS * n_chunks * H_v), 0);
-        attn = ggml_permute(gctx, o, 0, 2, 1, 3);  // [S_v, H_v, n, 1]
-
-        s_new = ggml_reshape_4d(gctx, s, S_v, S_v, H_v, n_seqs);
-    }
+    // Extract new state: [S_v, S_v, H_v, n_seqs]
+    ggml_tensor* s_new = ggml_view_4d(gctx, result,
+            S_v, S_v, H_v, n_seqs,
+            ggml_row_size(result->type, S_v),
+            ggml_row_size(result->type, S_v * S_v),
+            ggml_row_size(result->type, S_v * S_v * H_v),
+            ggml_row_size(result->type, S_v * H_v * n * n_seqs));
 
     attn = ggml_cont(gctx, attn);
     attn = ggml_reshape_3d(gctx, attn, S_v, H_v, n);  // match downstream [head_v_dim, num_v_heads, n]
 
     if (sp_gdn_diag_enabled()) {
         std::fprintf(stderr, "[sp-gdn-diag] build_block_gdn: path=%s attn=[%lld,%lld,%lld] s_new=[%lld,%lld,%lld,%lld]\n",
-                     (n == 1) ? "AR" : "chunked",
+                     "fused",
                      (long long)attn->ne[0], (long long)attn->ne[1], (long long)attn->ne[2],
                      (long long)s_new->ne[0], (long long)s_new->ne[1], (long long)s_new->ne[2], (long long)s_new->ne[3]);
     }
@@ -1962,16 +1782,10 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
     std::vector<ggml_tensor*> gdn_ssm_state_in  ((size_t)impl_->n_layer, nullptr);
     std::vector<ggml_tensor*> gdn_conv_state_out((size_t)impl_->n_layer, nullptr);
     std::vector<ggml_tensor*> gdn_ssm_state_out ((size_t)impl_->n_layer, nullptr);
-    // WORKAROUND: GDN layers are skipped (chunked delta-net crashes in
-    // ggml_solve_tri on this ggml version).  Disable GDN state alloc so
-    // gallocr doesn't assert on unreferenced input tensors.
-    const bool have_gdn_shapes = false;
-#if 0  // original gate — re-enable when GDN ggml kernels are fixed
-    const bool have_gdn_shapes_REAL =
+    const bool have_gdn_shapes =
         impl_->is_hybrid_gdn && impl_->gdn_conv_channels > 0 &&
         impl_->gdn_conv_kernel > 1 && impl_->gdn_head_v_dim > 0 &&
         impl_->gdn_num_v_heads > 0;
-#endif
     if (have_gdn_shapes) {
         for (int il = 0; il < impl_->n_layer; ++il) {
             if (W->layers()[(size_t)il].kind != LlamaLayerKind::MOE_GDN) continue;
@@ -2079,14 +1893,6 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
             // into our two out-vectors so forward_full can mark them as
             // graph outputs and persist them back to the cache.
             //
-            // WORKAROUND: skip GDN compute — the chunked delta-net path
-            // crashes in ggml_solve_tri / ggml_set_inplace on this ggml
-            // version.  Pass x through unchanged so the rest of the graph
-            // (MoE attention + MoE FFN + output projection) can be
-            // validated.  GDN layers contribute ~0 perplexity information
-            // for a cold prefill (zero-state), so the quality impact on
-            // the first forward call is negligible.
-            if (false) {
             ggml_tensor* conv_out = nullptr;
             ggml_tensor* ssm_out  = nullptr;
             x = build_block_gdn(gctx, x,
@@ -2107,8 +1913,6 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
                                  curriculum_active ? &sel_cap : nullptr);
             if (conv_out) { ggml_set_output(conv_out); gdn_conv_state_out[(size_t)i] = conv_out; }
             if (ssm_out)  { ggml_set_output(ssm_out);  gdn_ssm_state_out[(size_t)i]  = ssm_out;  }
-            }
-            std::fprintf(stderr, "[sp-engine] layer %d: GDN skipped (workaround)\n", i);
             break;
         }
         }
