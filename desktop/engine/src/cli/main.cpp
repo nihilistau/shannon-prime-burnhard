@@ -2964,11 +2964,13 @@ int main(int argc, char** argv) {
         if (!kv) { std::fprintf(stderr, "KvCache::create failed\n"); return 7; }
         std::fprintf(stderr, "[sp-engine] %s\n", kv->describe().c_str());
 
-        // Calibrate before writing.
+        // Calibrate before writing. Skip layers with no K/V capture
+        // (GDN layers in hybrid archs produce no K/V).
         if (!kv->is_calibrated()) {
             if (kv->calibrate_begin()) {
                 const bool hier = kv->is_hierarchical();
                 for (int L = 0; L < n_layer; ++L) {
+                    if (Ks[(size_t)L].empty()) continue;  // GDN layer — no K/V
                     const float* K_data = Ks[(size_t)L].data();
                     for (int q = 0; q < n; ++q) {
                         for (int h = 0; h < n_head_kv; ++h) {
@@ -2986,7 +2988,12 @@ int main(int argc, char** argv) {
         }
 
         // Push every layer's captured K/V through the compressed cache.
+        // Skip layers with no K/V capture (GDN layers in hybrid archs).
         for (int L = 0; L < n_layer; ++L) {
+            if (Ks[(size_t)L].empty() || Vs[(size_t)L].empty()) {
+                std::fprintf(stderr, "  layer %d: no K/V (GDN), skipped\n", L);
+                continue;
+            }
             if (!kv->write(L, /*pos_offset=*/0, n, Ks[(size_t)L].data(), Vs[(size_t)L].data())) {
                 std::fprintf(stderr, "kv->write layer %d failed\n", L); return 8;
             }
@@ -3006,9 +3013,12 @@ int main(int argc, char** argv) {
         };
 
         // Read every layer back, compute mean K corr / V corr per layer.
+        // Skip layers with no K/V capture (GDN layers in hybrid archs).
         std::printf("layer  K_corr   V_corr  K_min   V_min\n");
         double overall_k = 0, overall_v = 0;
+        int    n_attn_layers = 0;
         for (int L = 0; L < n_layer; ++L) {
+            if (Ks[(size_t)L].empty() || Vs[(size_t)L].empty()) continue;
             std::vector<float> Krec, Vrec;
             if (!kv->read(L, n, Krec, Vrec)) {
                 std::fprintf(stderr, "kv->read layer %d failed\n", L); return 9;
@@ -3031,13 +3041,15 @@ int main(int argc, char** argv) {
             }
             float km = (float)(k_sum / per), vm = (float)(v_sum / per);
             overall_k += km; overall_v += vm;
+            ++n_attn_layers;
             // Show a sample of layers to keep the table small.
-            if (L < 4 || L == n_layer - 1 || L == n_layer / 2) {
+            if (n_attn_layers <= 4 || L == n_layer - 1 || L == n_layer / 2) {
                 std::printf("%3d   %6.4f  %6.4f  %6.4f  %6.4f\n", L, km, vm, k_min, v_min);
             }
         }
-        std::printf("---\nmean over %d layers: K_corr=%.4f  V_corr=%.4f  compression=%.2fx\n",
-                    n_layer, overall_k / n_layer, overall_v / n_layer,
+        if (n_attn_layers == 0) n_attn_layers = 1;
+        std::printf("---\nmean over %d attn layers (of %d total): K_corr=%.4f  V_corr=%.4f  compression=%.2fx\n",
+                    n_attn_layers, n_layer, overall_k / n_attn_layers, overall_v / n_attn_layers,
                     kv->compression_ratio());
         return 0;
     }
