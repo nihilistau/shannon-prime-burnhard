@@ -402,7 +402,16 @@ void sp_band_quantize(const float *vht2_coeffs, uint8_t *out,
         }
 
         int bits = bc->band_bits[b];
-        int max_val = (1 << (bits - 1)) - 1; // e.g. 5-bit → 15
+        // Centered-nibble encoding: offset = 2^(bits-1), giving the full
+        // 2^bits code range [-offset, offset-1]. For 4-bit this is
+        // q ∈ [-8, +7] stored as u ∈ [0, 15] — all 16 codes used.
+        // The old symmetric encoding (max_val = 2^(bits-1)-1) wasted one
+        // code and introduced a DC bias that accumulated through VHT2
+        // round-trips, causing repetitive-token drift at low bit widths.
+        int qoffset = 1 << (bits - 1);            // e.g. 4-bit → 8
+        int qmax    = qoffset - 1;                 // +7  (positive clamp)
+        int qmin    = -qoffset;                    // -8  (negative clamp)
+        uint32_t umask = (1u << bits) - 1;         // 0xF for 4-bit
 
         // Find max absolute value in band
         float amax = 0.0f;
@@ -411,8 +420,10 @@ void sp_band_quantize(const float *vht2_coeffs, uint8_t *out,
             if (a > amax) amax = a;
         }
 
-        // Scale: maps [-amax, amax] to [-max_val, max_val]
-        float scale = (amax > 0.0f) ? amax / (float)max_val : 0.0f;
+        // Scale: maps [-amax, amax] to [-qoffset, qoffset-1].
+        // Using qoffset (not qmax) as the divisor so the negative rail
+        // maps exactly and positive values get slightly finer resolution.
+        float scale = (amax > 0.0f) ? amax / (float)qoffset : 0.0f;
 
         // Store scale as fp16, then recompute inv_scale from the stored
         // fp16 value so quantize and dequantize use the same scale.
@@ -432,14 +443,13 @@ void sp_band_quantize(const float *vht2_coeffs, uint8_t *out,
         int      bit_pos = 0;
 
         for (int i = 0; i < band_sz; i++) {
-            // Quantize to signed integer
+            // Quantize: round to nearest integer in [-qoffset, qmax]
             int q = (int)roundf(band[i] * inv_scale);
-            if (q > max_val)  q = max_val;
-            if (q < -max_val) q = -max_val;
+            if (q > qmax)  q = qmax;
+            if (q < qmin)  q = qmin;
 
-            // Convert to unsigned representation for packing
-            // Offset by max_val so range is [0, 2*max_val]
-            uint32_t u = (uint32_t)(q + max_val);
+            // Convert to unsigned: q + qoffset → [0, 2^bits - 1]
+            uint32_t u = (uint32_t)(q + qoffset) & umask;
 
             bit_buffer |= ((uint64_t)u << bit_pos);
             bit_pos += bits;
@@ -500,7 +510,7 @@ void sp_band_dequantize(const uint8_t *in, float *vht2_coeffs,
         }
 
         int bits = bc->band_bits[b];
-        int max_val = (1 << (bits - 1)) - 1;
+        int qoffset = 1 << (bits - 1);            // centered-nibble offset
         uint32_t mask = (1u << bits) - 1;
 
         // Read scale. Sanitise: fp16 round-trip can produce +Inf (amax overflowed
@@ -530,8 +540,8 @@ void sp_band_dequantize(const uint8_t *in, float *vht2_coeffs,
             bit_buffer >>= bits;
             bit_pos -= bits;
 
-            // Convert back to signed
-            int q = (int)u - max_val;
+            // Convert back to signed: u - qoffset → [-qoffset, qoffset-1]
+            int q = (int)u - qoffset;
             band[i] = (float)q * scale;
         }
 
@@ -594,7 +604,7 @@ void sp_band_dequantize_partial(const uint8_t *in, float *vht2_coeffs,
 
         // ── Regular signed-int band path (mirrors sp_band_dequantize) ─────
         int bits = bc->band_bits[b];
-        int max_val = (1 << (bits - 1)) - 1;
+        int qoffset = 1 << (bits - 1);            // centered-nibble offset
         uint32_t mask = (1u << bits) - 1;
 
         uint16_t scale_f16 = (uint16_t)in[offset] | ((uint16_t)in[offset + 1] << 8);
@@ -614,7 +624,7 @@ void sp_band_dequantize_partial(const uint8_t *in, float *vht2_coeffs,
             uint32_t u = (uint32_t)(bit_buffer & mask);
             bit_buffer >>= bits;
             bit_pos -= bits;
-            int q = (int)u - max_val;
+            int q = (int)u - qoffset;
             band[i] = (float)q * scale;
         }
 
