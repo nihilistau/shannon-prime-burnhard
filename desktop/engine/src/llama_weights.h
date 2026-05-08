@@ -5,7 +5,7 @@
 // Commercial license available — contact raydaniels@gmail.com
 //
 // Materialises the tensors of a llama-family GGUF (arch ∈ {llama, qwen2,
-// qwen3, mistral3, phi3, granite, gemma3, qwen35moe}) into a ggml_context
+// qwen3, mistral3, phi3, granite, gemma3, gemma4, qwen35moe}) into a ggml_context
 // and exposes typed per-layer handles. The layout is nearly identical
 // across these archs modulo a handful of optional bias / norm tensors —
 // a single struct covers them all:
