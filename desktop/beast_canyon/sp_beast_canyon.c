@@ -607,22 +607,254 @@ int sp_beast_sidecar_prime_pe(sp_beast_engine_t *engine,
 {
     if (engine->sidecar.state != SP_SIDECAR_ONLINE) {
         // CPU fallback: run Prime-PE on host
-        // sp_prime_pe_forward(hidden_states, dim, pe_output, ...);
         memcpy(pe_output, hidden_states, dim * sizeof(float));
-        return -1;  // Indicate fallback
+        return -1;
     }
 
-    // TODO: serialize hidden_states, send via socket, recv result
-    // Protocol: [dim:u32][data:f32*dim] → [result:f32*dim]
+    int fd = engine->sidecar.socket_fd;
     uint64_t t0 = sp_time_us();
 
-    // For now, fallback
-    memcpy(pe_output, hidden_states, dim * sizeof(float));
+    // Build payload: [dim:u32][hidden:f32*dim]
+    uint32_t payload_len = (uint32_t)(sizeof(uint32_t) + dim * sizeof(float));
+    uint8_t *payload = (uint8_t *)malloc(payload_len);
+    if (!payload) {
+        memcpy(pe_output, hidden_states, dim * sizeof(float));
+        return -1;
+    }
+    uint32_t udim = (uint32_t)dim;
+    memcpy(payload, &udim, sizeof(udim));
+    memcpy(payload + sizeof(udim), hidden_states, dim * sizeof(float));
 
+    if (sp_sidecar_send(fd, SP_CMD_PRIME_PE, payload, payload_len) != 0) {
+        free(payload);
+        engine->sidecar.state = SP_SIDECAR_ERROR;
+        memcpy(pe_output, hidden_states, dim * sizeof(float));
+        return -1;
+    }
+    free(payload);
+    engine->sidecar.total_bytes_sent += sizeof(sp_sidecar_hdr_t) + payload_len;
+
+    // Receive response: [dim:u32][pe_out:f32*dim]
+    void *resp = NULL;
+    uint32_t resp_len = 0;
+    int status = sp_sidecar_recv_msg(fd, &resp, &resp_len);
+    if (status != SP_RESP_OK || !resp ||
+        resp_len < sizeof(uint32_t) + dim * sizeof(float))
+    {
+        free(resp);
+        engine->sidecar.state = SP_SIDECAR_ERROR;
+        memcpy(pe_output, hidden_states, dim * sizeof(float));
+        return -1;
+    }
+
+    memcpy(pe_output, (uint8_t *)resp + sizeof(uint32_t), dim * sizeof(float));
+    free(resp);
+
+    engine->sidecar.total_bytes_recv += sizeof(sp_sidecar_hdr_t) + resp_len;
     engine->sidecar.total_offloads++;
     engine->sidecar.total_offload_us += sp_time_us() - t0;
 
     return 0;
+}
+
+// ── Sidecar: Ping ────────────────────────────────────────────────────
+
+int sp_beast_sidecar_ping(sp_beast_engine_t *engine) {
+    if (engine->sidecar.state != SP_SIDECAR_ONLINE) return -1;
+
+    int fd = engine->sidecar.socket_fd;
+    if (sp_sidecar_send(fd, SP_CMD_PING, NULL, 0) != 0) {
+        engine->sidecar.state = SP_SIDECAR_ERROR;
+        return -1;
+    }
+
+    void *resp = NULL;
+    uint32_t resp_len = 0;
+    int status = sp_sidecar_recv_msg(fd, &resp, &resp_len);
+    free(resp);
+
+    if (status != SP_RESP_OK) {
+        engine->sidecar.state = SP_SIDECAR_ERROR;
+        return -1;
+    }
+    return 0;
+}
+
+// ── Sidecar: Load draft model ─────────────────────────────────────────
+
+int sp_beast_sidecar_load_draft(sp_beast_engine_t *engine,
+                                const char *phone_gguf_path)
+{
+    if (engine->sidecar.state != SP_SIDECAR_ONLINE) return -1;
+
+    int fd = engine->sidecar.socket_fd;
+    uint32_t path_len = (uint32_t)(strlen(phone_gguf_path) + 1); // include NUL
+
+    if (sp_sidecar_send(fd, SP_CMD_LOAD_DRAFT, phone_gguf_path, path_len) != 0) {
+        engine->sidecar.state = SP_SIDECAR_ERROR;
+        return -1;
+    }
+    engine->sidecar.total_bytes_sent += sizeof(sp_sidecar_hdr_t) + path_len;
+
+    void *resp = NULL;
+    uint32_t resp_len = 0;
+    int status = sp_sidecar_recv_msg(fd, &resp, &resp_len);
+    free(resp);
+
+    if (status != SP_RESP_OK) {
+        fprintf(stderr, "[sp-sidecar] Load draft failed (status=%d)\n", status);
+        return -1;
+    }
+
+    fprintf(stderr, "[sp-sidecar] Draft model loaded: %s\n", phone_gguf_path);
+    return 0;
+}
+
+// ── Sidecar: Prefill draft model ──────────────────────────────────────
+
+int sp_beast_sidecar_prefill(sp_beast_engine_t *engine,
+                             const int32_t *tokens, int n_tokens)
+{
+    if (engine->sidecar.state != SP_SIDECAR_ONLINE) return -1;
+
+    int fd = engine->sidecar.socket_fd;
+
+    // Payload: [n_tokens:u32][token_ids:i32*n]
+    uint32_t payload_len = (uint32_t)(sizeof(uint32_t) + n_tokens * sizeof(int32_t));
+    uint8_t *payload = (uint8_t *)malloc(payload_len);
+    if (!payload) return -1;
+
+    uint32_t un = (uint32_t)n_tokens;
+    memcpy(payload, &un, sizeof(un));
+    memcpy(payload + sizeof(un), tokens, n_tokens * sizeof(int32_t));
+
+    if (sp_sidecar_send(fd, SP_CMD_PREFILL, payload, payload_len) != 0) {
+        free(payload);
+        engine->sidecar.state = SP_SIDECAR_ERROR;
+        return -1;
+    }
+    free(payload);
+    engine->sidecar.total_bytes_sent += sizeof(sp_sidecar_hdr_t) + payload_len;
+
+    void *resp = NULL;
+    uint32_t resp_len = 0;
+    int status = sp_sidecar_recv_msg(fd, &resp, &resp_len);
+    free(resp);
+
+    if (status != SP_RESP_OK) {
+        fprintf(stderr, "[sp-sidecar] Prefill failed (status=%d)\n", status);
+        return -1;
+    }
+
+    fprintf(stderr, "[sp-sidecar] Draft prefilled with %d tokens\n", n_tokens);
+    return 0;
+}
+
+// ── Sidecar: Draft speculative tokens ─────────────────────────────────
+
+int sp_beast_sidecar_draft(sp_beast_engine_t *engine,
+                           int32_t current_tok, int n_draft,
+                           sp_sidecar_draft_result_t *out)
+{
+    memset(out, 0, sizeof(*out));
+
+    if (engine->sidecar.state != SP_SIDECAR_ONLINE) return -1;
+    if (n_draft > SP_SIDECAR_MAX_DRAFT) n_draft = SP_SIDECAR_MAX_DRAFT;
+
+    int fd = engine->sidecar.socket_fd;
+    uint64_t t0 = sp_time_us();
+
+    // Payload: [current_token:i32][n_draft:u32]
+    uint8_t payload[8];
+    memcpy(payload, &current_tok, sizeof(int32_t));
+    uint32_t un = (uint32_t)n_draft;
+    memcpy(payload + 4, &un, sizeof(uint32_t));
+
+    if (sp_sidecar_send(fd, SP_CMD_DRAFT, payload, 8) != 0) {
+        engine->sidecar.state = SP_SIDECAR_ERROR;
+        return -1;
+    }
+    engine->sidecar.total_bytes_sent += sizeof(sp_sidecar_hdr_t) + 8;
+
+    // Response: [n_drafted:u32][draft_ids:i32*n]
+    void *resp = NULL;
+    uint32_t resp_len = 0;
+    int status = sp_sidecar_recv_msg(fd, &resp, &resp_len);
+    if (status != SP_RESP_OK || !resp || resp_len < sizeof(uint32_t)) {
+        free(resp);
+        if (status == (int)SP_RESP_NOT_LOADED) {
+            fprintf(stderr, "[sp-sidecar] Draft model not loaded on phone\n");
+        }
+        return -1;
+    }
+
+    uint32_t n_got = 0;
+    memcpy(&n_got, resp, sizeof(uint32_t));
+    if (n_got > SP_SIDECAR_MAX_DRAFT) n_got = SP_SIDECAR_MAX_DRAFT;
+    if (resp_len < sizeof(uint32_t) + n_got * sizeof(int32_t)) {
+        free(resp);
+        return -1;
+    }
+
+    memcpy(out->tokens, (uint8_t *)resp + sizeof(uint32_t),
+           n_got * sizeof(int32_t));
+    out->n_drafted = (int)n_got;
+    free(resp);
+
+    engine->sidecar.total_bytes_recv += sizeof(sp_sidecar_hdr_t) + resp_len;
+    out->round_trip_us = sp_time_us() - t0;
+    engine->sidecar.total_offloads++;
+    engine->sidecar.total_offload_us += out->round_trip_us;
+
+    return 0;
+}
+
+// ── Sidecar: Accept verified tokens ───────────────────────────────────
+
+int sp_beast_sidecar_accept(sp_beast_engine_t *engine,
+                            const int32_t *verified, int n_accepted)
+{
+    if (engine->sidecar.state != SP_SIDECAR_ONLINE) return -1;
+
+    int fd = engine->sidecar.socket_fd;
+
+    uint32_t payload_len = (uint32_t)(sizeof(uint32_t) + n_accepted * sizeof(int32_t));
+    uint8_t *payload = (uint8_t *)malloc(payload_len);
+    if (!payload) return -1;
+
+    uint32_t un = (uint32_t)n_accepted;
+    memcpy(payload, &un, sizeof(un));
+    memcpy(payload + sizeof(un), verified, n_accepted * sizeof(int32_t));
+
+    if (sp_sidecar_send(fd, SP_CMD_ACCEPT, payload, payload_len) != 0) {
+        free(payload);
+        engine->sidecar.state = SP_SIDECAR_ERROR;
+        return -1;
+    }
+    free(payload);
+    engine->sidecar.total_bytes_sent += sizeof(sp_sidecar_hdr_t) + payload_len;
+
+    // Don't wait for response on accept — fire and forget for latency
+    return 0;
+}
+
+// ── Sidecar: Reset draft state ────────────────────────────────────────
+
+int sp_beast_sidecar_reset(sp_beast_engine_t *engine) {
+    if (engine->sidecar.state != SP_SIDECAR_ONLINE) return -1;
+
+    int fd = engine->sidecar.socket_fd;
+    if (sp_sidecar_send(fd, SP_CMD_RESET, NULL, 0) != 0) {
+        engine->sidecar.state = SP_SIDECAR_ERROR;
+        return -1;
+    }
+
+    void *resp = NULL;
+    uint32_t resp_len = 0;
+    int status = sp_sidecar_recv_msg(fd, &resp, &resp_len);
+    free(resp);
+
+    return (status == SP_RESP_OK) ? 0 : -1;
 }
 
 // ============================================================================
@@ -1646,21 +1878,117 @@ int sp_beast_generate(sp_beast_engine_t *engine,
     fprintf(stderr, "\n[sp-beast] Prefill done: %.1f ms (%.2f tok/s)\n",
             prefill_ms, prefill_tps);
 
+    // ── Prefill sidecar draft model if online ──
+    bool sidecar_drafting = false;
+    int spec_n_draft = 4;  // Tunable: how many tokens to draft per step
+    int spec_accepted_total = 0;
+    int spec_drafted_total  = 0;
+
+    if (engine->sidecar.state == SP_SIDECAR_ONLINE) {
+        // Prefill the phone's draft model with the same prompt
+        if (sp_beast_sidecar_prefill(engine, prompt_tokens, n_prompt) == 0) {
+            sidecar_drafting = true;
+            fprintf(stderr, "[sp-beast] Speculative decode ENABLED: draft=%d tokens/step\n",
+                    spec_n_draft);
+        } else {
+            fprintf(stderr, "[sp-beast] Sidecar prefill failed, falling back to standard decode\n");
+        }
+    }
+
     // ── Decode: autoregressive generation ──
     fprintf(stderr, "[sp-beast] Generating %d tokens...\n", max_tokens);
     int n_generated = 0;
 
-    for (int t = 0; t < max_tokens; t++) {
-        // Sample next token (argmax for now)
-        int next_token = beast_argmax(engine->beast_logits, vocab);
-        if (output_tokens) output_tokens[t] = next_token;
+    // Helper macro for EOS check
+    #define IS_EOS(tok) ((tok) == 0 || (tok) == 2 || (tok) == 151643 || (tok) == 151645)
 
+    while (n_generated < max_tokens) {
+        int next_token = beast_argmax(engine->beast_logits, vocab);
+        if (output_tokens) output_tokens[n_generated] = next_token;
+
+        if (IS_EOS(next_token)) {
+            fprintf(stderr, "\n[sp-beast] EOS token %d at position %d\n",
+                    next_token, n_generated);
+            n_generated++;
+            break;
+        }
+
+        // ── Speculative decode path ──
+        if (sidecar_drafting) {
+            sp_sidecar_draft_result_t draft_result;
+            if (sp_beast_sidecar_draft(engine, (int32_t)next_token,
+                                       spec_n_draft, &draft_result) == 0 &&
+                draft_result.n_drafted > 0)
+            {
+                spec_drafted_total += draft_result.n_drafted;
+
+                // Run verified forward for the accepted token
+                uint64_t tok_start = sp_time_us();
+                int rc = sp_beast_forward(engine, next_token, engine->beast_logits);
+                uint64_t tok_end = sp_time_us();
+                if (rc != 0) break;
+                engine->total_tokens++;
+                engine->total_inference_us += (tok_end - tok_start);
+                n_generated++;
+
+                // Verify each draft token against the full model
+                int n_accepted = 0;
+                int32_t verified[SP_SIDECAR_MAX_DRAFT];
+
+                for (int d = 0; d < draft_result.n_drafted && n_generated < max_tokens; d++) {
+                    int host_pred = beast_argmax(engine->beast_logits, vocab);
+
+                    if (host_pred == draft_result.tokens[d]) {
+                        // Draft matches — accept, run forward to advance KV
+                        verified[n_accepted] = (int32_t)host_pred;
+                        n_accepted++;
+
+                        if (output_tokens) output_tokens[n_generated] = host_pred;
+
+                        tok_start = sp_time_us();
+                        rc = sp_beast_forward(engine, host_pred, engine->beast_logits);
+                        tok_end = sp_time_us();
+                        if (rc != 0) break;
+                        engine->total_tokens++;
+                        engine->total_inference_us += (tok_end - tok_start);
+                        n_generated++;
+
+                        if (IS_EOS(host_pred)) break;
+                    } else {
+                        // Mismatch — reject remaining drafts, use host's prediction
+                        break;
+                    }
+                }
+
+                spec_accepted_total += n_accepted;
+
+                // Tell sidecar how many we accepted
+                if (n_accepted > 0) {
+                    sp_beast_sidecar_accept(engine, verified, n_accepted);
+                }
+
+                double acc = (spec_drafted_total > 0) ?
+                    100.0 * spec_accepted_total / spec_drafted_total : 0.0;
+                fprintf(stderr, "\r[sp-beast] Token %d  spec: %d/%d accepted (%.0f%% hit)  "
+                        "rt=%.0fus  %.2f tok/s",
+                        n_generated, n_accepted, draft_result.n_drafted, acc,
+                        (double)draft_result.round_trip_us,
+                        (engine->total_inference_us > 0) ?
+                            (double)n_generated / ((double)engine->total_inference_us / 1e6) : 0.0);
+
+                continue;  // Next decode step
+            }
+            // Draft failed — fall through to standard decode for this step
+        }
+
+        // ── Standard single-token decode path ──
         uint64_t tok_start = sp_time_us();
         int rc = sp_beast_forward(engine, next_token, engine->beast_logits);
         uint64_t tok_end = sp_time_us();
 
         if (rc != 0) {
-            fprintf(stderr, "\n[sp-beast] Forward failed at generated token %d\n", t);
+            fprintf(stderr, "\n[sp-beast] Forward failed at generated token %d\n",
+                    n_generated);
             break;
         }
 
@@ -1674,16 +2002,10 @@ int sp_beast_generate(sp_beast_engine_t *engine,
             ((double)engine->total_inference_us / 1e6) : 0.0;
 
         fprintf(stderr, "\r[sp-beast] Token %d: id=%6d  %.0f ms  (%.2f tok/s avg)",
-                t + 1, next_token, tok_ms, avg_tps);
-
-        // EOS check (common EOS tokens)
-        if (next_token == 0 || next_token == 2 || next_token == 151643 ||
-            next_token == 151645) {
-            fprintf(stderr, "\n[sp-beast] EOS token %d at position %d\n",
-                    next_token, t);
-            break;
-        }
+                n_generated, next_token, tok_ms, avg_tps);
     }
+
+    #undef IS_EOS
 
     // ── Final report ──
     fprintf(stderr, "\n\n");
@@ -1700,6 +2022,16 @@ int sp_beast_generate(sp_beast_engine_t *engine,
     fprintf(stderr, "║  CRT shreds: %llu  elements: %llu                       ║\n",
             (unsigned long long)engine->shredder_crt.total_shreds,
             (unsigned long long)engine->shredder_crt.total_elements);
+    if (spec_drafted_total > 0) {
+        double acc = 100.0 * spec_accepted_total / spec_drafted_total;
+        fprintf(stderr, "║  Sidecar:   %4d drafted, %4d accepted (%.1f%%)       ║\n",
+                spec_drafted_total, spec_accepted_total, acc);
+        fprintf(stderr, "║  Sidecar:   %llu offloads, avg %.0f us/rt              ║\n",
+                (unsigned long long)engine->sidecar.total_offloads,
+                engine->sidecar.total_offloads > 0 ?
+                    (double)engine->sidecar.total_offload_us /
+                    (double)engine->sidecar.total_offloads : 0.0);
+    }
     fprintf(stderr, "╚══════════════════════════════════════════════════════╝\n");
 
 cleanup:

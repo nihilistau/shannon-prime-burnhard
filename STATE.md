@@ -1,6 +1,6 @@
 # Shannon-Prime BurnHard — Project State
 
-Last updated: 2026-05-09 (GDN fused op landed)
+Last updated: 2026-05-09 (phone sidecar speculative decode wired)
 
 ## Overall Goals
 
@@ -38,13 +38,14 @@ Last updated: 2026-05-09 (GDN fused op landed)
 - [x] GDN fused op: ggml_gated_delta_net replaces chunked prefill (caca3ea)
 - [x] All 30 GDN layers computing on Qwen3.6-35B-A3B (zero crashes, zero NaN)
 
-### In Progress
-- [ ] **Q4_K centered nibbles**: Implement `(q - 8)` bit-slicing in /core to fix repetitive tokens
-- [ ] **mRoPE Mode 8**: 3-segment partitioned rotation for Qwen 3.6
+- [x] Q4_K centered nibbles: `(q - offset)` bit-slicing in /core eliminates DC bias
+- [x] mRoPE Mode 8: 3-segment partitioned rotation confirmed working for Qwen 3.6
+- [x] CRT expert-split scaffolding: sp_crt_dispatch_t threaded into MoE graph builder (f14f7b6)
 
-### Next Up
-- [ ] **CRT multi-GPU expert splitting**: Wire RTX 2060 (M1) + UHD 750 (M2) dispatch in Beast Canyon
-- [ ] **Phone sidecar**: Wire ADB bridge into Beast Canyon orchestrator
+- [x] Phone sidecar: wire protocol + speculative decode in Beast Canyon generate loop
+
+### In Progress
+- [ ] **CRT expert-split Phase 2**: Actual GPU dispatch kernels (CUDA+L0 streams behind hetero barrier)
 - [ ] **Validate 27B + 31B**: Run Qwen3.6-27B and Gemma4-31B through full pipeline
 - [ ] **Storage topology**: Plan for 32GB NVMe + P4800X 375GB Optane U.2
 

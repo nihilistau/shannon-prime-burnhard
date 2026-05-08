@@ -32,6 +32,7 @@
 #include "sp_thermal_throttle.h"
 #include "sp_prefetch_telemetry.h"
 #include "sp_shredder_crt.h"
+#include "sp_sidecar_proto.h"
 #include "../../core/include/shannon_prime.h"
 
 #include <stdint.h>
@@ -273,6 +274,31 @@ void sp_beast_sidecar_disconnect(sp_beast_engine_t *engine);
 int sp_beast_sidecar_prime_pe(sp_beast_engine_t *engine,
                               const float *hidden_states, int dim,
                               float *pe_output);
+
+// Ping the sidecar. Returns 0 if responsive, -1 if dead.
+int sp_beast_sidecar_ping(sp_beast_engine_t *engine);
+
+// Tell sidecar to load a draft model (path on the phone's filesystem).
+int sp_beast_sidecar_load_draft(sp_beast_engine_t *engine,
+                                const char *phone_gguf_path);
+
+// Prefill the draft model on the phone with the same prompt as the host.
+int sp_beast_sidecar_prefill(sp_beast_engine_t *engine,
+                             const int32_t *tokens, int n_tokens);
+
+// Draft N speculative tokens from the phone's draft model.
+// current_tok = the token just decoded by the host. n_draft = how many to predict.
+// Result written to *out. Returns 0 on success, -1 on error/fallback.
+int sp_beast_sidecar_draft(sp_beast_engine_t *engine,
+                           int32_t current_tok, int n_draft,
+                           sp_sidecar_draft_result_t *out);
+
+// Accept verified tokens / resync after speculative mismatch.
+int sp_beast_sidecar_accept(sp_beast_engine_t *engine,
+                            const int32_t *verified, int n_accepted);
+
+// Reset draft model state (new conversation).
+int sp_beast_sidecar_reset(sp_beast_engine_t *engine);
 
 // ============================================================================
 // Public API — Diagnostics
