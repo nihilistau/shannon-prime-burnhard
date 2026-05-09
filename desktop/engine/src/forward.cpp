@@ -74,6 +74,11 @@ struct ForwardContext::Impl {
     float swa_rope_freq_base = 10000.0f;
     float attn_logit_softcapping = 0.0f;
     float final_logit_softcapping = 0.0f;
+    // Gemma4 fixed pre-attention scalar (replaces 1/sqrt(head_dim) for
+    // the QK^T scale). Per the reference attention impl, all Gemma4
+    // layers — even the global ones with head_dim=512 — use this single
+    // value, defaulting to 256 when the GGUF stores -1 / no key.
+    int   gemma4_query_pre_attn_scalar = 0;
 
     // FFN activation. Llama/qwen/mistral/phi/granite use SwiGLU
     // (silu(gate) * up); gemma (1/2/3) uses GeGLU with the tanh
@@ -430,12 +435,20 @@ std::unique_ptr<ForwardContext> ForwardContext::create(const Model& model,
         const int64_t w = model.get_i64("gemma4.attention.sliding_window",
                                          model.get_i64("gemma3.attention.sliding_window", 0));
         if (w > 0) fc->impl_->swa_window = (int)w;
-        fc->impl_->attn_logit_softcapping = (float)model.get_f64(
-            "gemma4.attention.logit_softcapping",
-            model.get_f64("gemma3.attention.logit_softcapping", 0.0));
-        fc->impl_->final_logit_softcapping = (float)model.get_f64(
-            "gemma4.final_logit_softcapping",
-            model.get_f64("gemma3.final_logit_softcapping", 0.0));
+        // Gemma4 reference (gemma4_iswa.cpp) does NOT apply logit softcapping
+        // at all — neither attention nor final. Some GGUF re-exports inherit
+        // gemma3 keys with the legacy softcap=30 default; honour the explicit
+        // gemma4 key only if it's strictly positive, otherwise force 0.
+        // Force 0 — the reference attention path never applies softcap on
+        // Gemma 4. Some lmstudio re-exports of the GGUF inherit gemma3's
+        // 30.0 default and would otherwise saturate every output logit.
+        fc->impl_->attn_logit_softcapping  = 0.0f;
+        fc->impl_->final_logit_softcapping = 0.0f;
+        // Gemma4 uses a fixed query_pre_attn_scalar for the QK^T scale,
+        // independent of per-layer head_dim. GGUF default for the 31B
+        // is 256. Treat <=0 as "use default".
+        const int64_t qpa = model.get_i64("gemma4.attention.query_pre_attn_scalar", 0);
+        fc->impl_->gemma4_query_pre_attn_scalar = (qpa > 0) ? (int)qpa : 256;
     }
 
     // FFN activation flavor. Gemma family uses GELU (tanh approx)
@@ -1107,7 +1120,12 @@ static ggml_tensor* build_block(ggml_context* gctx,
                                  // ggml_mul_mat. The callback handles
                                  // quantize → dual-stream GPU matmul →
                                  // Garner reconstruction transparently.
-                                 sp_crt_dispatch_t* crt = nullptr) {
+                                 sp_crt_dispatch_t* crt = nullptr,
+                                 // Gemma4 query_pre_attn_scalar for QK^T
+                                 // scale (overrides 1/sqrt(head_dim) on
+                                 // gemma4 layers). Pass 256 for the 31B
+                                 // / 12B / 4B variants. 0 = not gemma4.
+                                 int gemma4_qpa_scalar = 0) {
     // Gemma4 per-layer geometry override. Locals/globals have different
     // head_dim and n_head_kv; use the per-layer values stored on L when
     // populated. n_rot for Gemma4 always equals head_dim (no kv_fold).
@@ -1230,8 +1248,14 @@ static ggml_tensor* build_block(ggml_context* gctx,
     if (kp->type == GGML_TYPE_F32) kp = ggml_cast(gctx, kp, GGML_TYPE_F16);
     if (vp->type == GGML_TYPE_F32) vp = ggml_cast(gctx, vp, GGML_TYPE_F16);
     ggml_tensor* mask_f16 = ggml_cast(gctx, kq_mask, GGML_TYPE_F16);
+    // Gemma4 uses query_pre_attn_scalar (256 default) for the QK^T scale
+    // for ALL layers — including globals where head_dim=512. Other archs
+    // use the standard 1/sqrt(head_dim).
+    const float qk_scale = (gemma4_path && L.gemma4_head_dim > 0)
+        ? (1.0f / sqrtf((float)gemma4_qpa_scalar))
+        : (1.0f / sqrtf((float)head_dim));
     ggml_tensor* attn = ggml_flash_attn_ext(gctx, qp, kp, vp, mask_f16,
-                                            1.0f / sqrtf((float)head_dim),
+                                            qk_scale,
                                             alibi_max_bias, attn_logit_softcap);
     ggml_flash_attn_ext_set_prec(attn, GGML_PREC_F32);
     attn = ggml_reshape_2d(gctx, attn, n_embd_q, n);
@@ -2013,14 +2037,20 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
             ggml_tensor* layer_mask = local ? kq_mask_swa : kq_mask;
             const float layer_freq_base = local ? impl_->swa_rope_freq_base
                                                  : impl_->rope_freq_base;
-            x = build_block(gctx, x, pos, layer_mask, freq_factors, impl_->alibi_max_bias,
+            // Gemma4: rope_freqs (frequency factors) is only applied on
+            // GLOBAL (non-SWA) layers per the reference. Pass null for
+            // local layers so RoPE skips the proportional scaling.
+            ggml_tensor* layer_freq_factors =
+                (L.gemma4_head_dim > 0 && local) ? nullptr : freq_factors;
+            x = build_block(gctx, x, pos, layer_mask, layer_freq_factors, impl_->alibi_max_bias,
                              L, n,
                              impl_->head_dim, impl_->n_head, impl_->n_head_kv,
                              impl_->n_rot, layer_freq_base, impl_->rope_freq_scale,
                              impl_->rms_norm_eps, impl_->rope_mode, impl_->ffn_gelu, impl_->attn_logit_softcapping,
                              capture ? &k_cap : nullptr,
                              capture ? &v_cap : nullptr,
-                             impl_->crt_dispatch);
+                             impl_->crt_dispatch,
+                             impl_->gemma4_query_pre_attn_scalar);
             break;
         }
         case LlamaLayerKind::MOE_ATTN: {
@@ -2432,7 +2462,8 @@ static ggml_tensor* build_block_decode(ggml_context* gctx,
                                         float attn_logit_softcap,
                                         ggml_tensor** k_capture,
                                         ggml_tensor** v_capture,
-                                        sp_crt_dispatch_t* crt = nullptr) {
+                                        sp_crt_dispatch_t* crt = nullptr,
+                                        int gemma4_qpa_scalar = 0) {
     // Gemma4 per-layer geometry override — same logic as build_block.
     if (L.gemma4_head_dim > 0) {
         head_dim   = L.gemma4_head_dim;
@@ -2548,7 +2579,11 @@ static ggml_tensor* build_block_decode(ggml_context* gctx,
     ggml_tensor* Qp = ggml_cont(gctx, ggml_permute(gctx, Q,      0, 2, 1, 3));
     ggml_tensor* Kp = ggml_cont(gctx, ggml_permute(gctx, K_full, 0, 2, 1, 3));
     ggml_tensor* KQ = ggml_mul_mat(gctx, Kp, Qp);
-    KQ = ggml_scale(gctx, KQ, 1.0f / sqrtf((float)head_dim));
+    // Gemma4 fixed pre-attention scale (see build_block prefill path).
+    const float dec_qk_scale = (gemma4_path && L.gemma4_head_dim > 0)
+        ? (1.0f / sqrtf((float)gemma4_qpa_scalar))
+        : (1.0f / sqrtf((float)head_dim));
+    KQ = ggml_scale(gctx, KQ, dec_qk_scale);
     if (attn_logit_softcap > 0.0f) {
         KQ = ggml_scale(gctx, KQ, 1.0f / attn_logit_softcap);
         KQ = ggml_tanh(gctx, KQ);
@@ -2827,10 +2862,13 @@ bool ForwardContext::decode(int32_t token_id,
         ggml_tensor* layer_mask = local ? mask_swa : mask;
         const float layer_freq_base = local ? impl_->swa_rope_freq_base
                                              : impl_->rope_freq_base;
+        // Gemma4: only global layers consume rope_freqs (see prefill site).
+        ggml_tensor* layer_freq_factors =
+            (layer.gemma4_head_dim > 0 && local) ? nullptr : freq_factors;
         x = build_block_decode(gctx, x, pos,
                                past_n > 0 ? past_K_tens[(size_t)L] : nullptr,
                                past_n > 0 ? past_V_tens[(size_t)L] : nullptr,
-                               layer_mask, freq_factors, impl_->alibi_max_bias,
+                               layer_mask, layer_freq_factors, impl_->alibi_max_bias,
                                W->layers()[(size_t)L],
                                past_n, hd, impl_->n_head, n_kv,
                                impl_->n_rot,
@@ -2838,7 +2876,8 @@ bool ForwardContext::decode(int32_t token_id,
                                impl_->rms_norm_eps, impl_->rope_mode,
                                impl_->ffn_gelu, impl_->attn_logit_softcapping,
                                &k_cap, &v_cap,
-                               impl_->crt_dispatch);
+                               impl_->crt_dispatch,
+                               impl_->gemma4_query_pre_attn_scalar);
         // Copy this layer's capture into its slice of the batched
         // output tensors. ggml_cpy returns the destination view.
         ggml_tensor* dst_k = ggml_view_3d(gctx, new_K_big, hd, n_kv, 1,
