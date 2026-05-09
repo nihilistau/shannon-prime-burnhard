@@ -63,6 +63,7 @@ set(SP_CORE_SRC
     core/src/shannon_prime_pe.c
     core/src/sp_runmode.c
     core/src/burnhard_config.c
+    core/src/shredder_q4k_inflight.c
     desktop/crt/sp_crt.c
     desktop/crt/sp_crt_dispatch.c
     desktop/crt/sp_theoretical.c)
@@ -77,6 +78,14 @@ else()
 endif()
 
 add_library(shannon_prime_core STATIC ${SP_CORE_SRC})
+# AVX-512 for the in-flight Shredder (and any future AVX-512 paths in core).
+# The Shredder gates its vector kernel on __AVX512F__ and falls back to a
+# scalar path otherwise, so this flag is for performance, not correctness.
+if(MSVC)
+    target_compile_options(shannon_prime_core PRIVATE /arch:AVX512)
+else()
+    target_compile_options(shannon_prime_core PRIVATE -mavx512f)
+endif()
 target_include_directories(shannon_prime_core PUBLIC
     core/include
     desktop/crt
@@ -353,6 +362,22 @@ if(SP_BUILD_TESTS)
         add_executable(test_core tests/core/test_core.c)
         target_link_libraries(test_core PRIVATE shannon_prime_core)
         add_test(NAME core COMMAND test_core)
+    endif()
+    # Session-1 BurnHard Shredder + Garner round-trip verifier.
+    if(EXISTS ${CMAKE_SOURCE_DIR}/tools/shred_verify.c)
+        add_executable(shred_verify tools/shred_verify.c)
+        target_link_libraries(shred_verify PRIVATE shannon_prime_core)
+        target_include_directories(shred_verify PRIVATE
+            ${CMAKE_SOURCE_DIR}/core/include)
+        # AVX-512 enabled on MSVC + GCC/Clang. The kernel falls back to a
+        # scalar path when the macro isn't defined, so missing AVX-512 is
+        # not fatal — just slower.
+        if(MSVC)
+            target_compile_options(shred_verify PRIVATE /arch:AVX512)
+        else()
+            target_compile_options(shred_verify PRIVATE -mavx512f)
+        endif()
+        add_test(NAME shred_verify COMMAND shred_verify)
     endif()
 endif()
 
