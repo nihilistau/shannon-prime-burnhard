@@ -8,6 +8,14 @@
 #include <string.h>
 
 #ifdef _WIN32
+#  include <winsock2.h>
+#else
+#  include <sys/select.h>
+#  include <sys/socket.h>
+#  include <errno.h>
+#endif
+
+#ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
 #  include <windows.h>
 typedef HANDLE sp_thread_t;
@@ -194,4 +202,47 @@ void sp_bridge_heartbeat_stop(sp_bridge_heartbeat_t *hb) {
     pthread_join(hb->thread, NULL);
 #endif
     free(hb);
+}
+
+// ----------------------------------------------------------------------------
+// Oracle send/recv — fixed 16-byte packed packet over the same socket.
+// Wrapped in the standard sidecar framing (cmd + length + payload) so a
+// future demuxer can route based on cmd code.
+// ----------------------------------------------------------------------------
+int sp_bridge_oracle_send(int socket_fd,
+                          const struct burnhard_oracle_packet *pkt) {
+    if (socket_fd < 0 || !pkt) return -1;
+    return sp_sidecar_send(socket_fd, SP_CMD_BRIDGE_ORACLE,
+                           pkt, BURNHARD_ORACLE_PKT_BYTES);
+}
+
+int sp_bridge_oracle_try_recv(int socket_fd,
+                              struct burnhard_oracle_packet *out) {
+    if (socket_fd < 0 || !out) return -1;
+
+    // Non-blocking readability check first — select with timeout=0.
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET((unsigned)socket_fd, &rfds);
+    struct timeval tv = { 0, 0 };
+    int sel = select(socket_fd + 1, &rfds, NULL, NULL, &tv);
+    if (sel == 0) return 0;       // No data right now.
+    if (sel < 0) return -1;
+
+    // Data is available; pull a framed message.  This DOES block until
+    // the full frame is read — caveat: if a partial frame arrives
+    // between select() and recv(), we wait for the rest.  In practice
+    // the kernel buffers a full 16-byte oracle packet atomically so
+    // this is fine.
+    void    *payload = NULL;
+    uint32_t plen    = 0;
+    int      cmd     = sp_sidecar_recv_msg(socket_fd, &payload, &plen);
+    if (cmd != SP_CMD_BRIDGE_ORACLE ||
+        plen != BURNHARD_ORACLE_PKT_BYTES || !payload) {
+        if (payload) free(payload);
+        return -1;
+    }
+    memcpy(out, payload, BURNHARD_ORACLE_PKT_BYTES);
+    free(payload);
+    return 1;
 }

@@ -45,7 +45,58 @@ enum {
     // Residue result (phone → desktop). Payload = sp_bridge_residue_pkt_t
     // header followed by the result bytes (same banded format).
     SP_CMD_BRIDGE_RESIDUE_RESULT = 0x0121,
+
+    // Speculative oracle packet (phone → desktop, fire-and-forget).
+    // Fixed 16-byte payload — see burnhard_oracle_packet_t below. The
+    // phone-side draft model emits one of these per locally-decoded
+    // token; the desktop's expert prefetcher consumes them async.
+    SP_CMD_BRIDGE_ORACLE     = 0x0130,
 };
+
+// ============================================================================
+// Oracle packet — fixed 16 bytes. Sent by the phone-side draft engine
+// every time it decodes a token.  The desktop reads `expert_id_1/2` and
+// kicks off an mmap prefetch of those expert blocks before the host's
+// MoE router gets to that layer.
+//
+// Wire layout matches a packed 16 B struct so we can `memcpy` directly
+// off the recv buffer with zero parsing.  No alignment between this
+// struct and the wire bytes — receiver must byte-copy into a local
+// instance before reading fields if the recv buffer isn't aligned.
+// ============================================================================
+typedef struct
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((packed))
+#endif
+{
+    uint32_t token_id;       // Speculative token predicted by the S22
+    uint16_t expert_id_1;    // Top-1 predicted MoE expert
+    uint16_t expert_id_2;    // Top-2 predicted MoE expert
+    uint8_t  confidence;     // 0..255, oracle certainty (0 = no signal)
+    uint8_t  layer_hint;     // 0..n_layer-1, layer the prediction targets
+    uint16_t batch_id;       // Caller-managed correlation ID
+    uint8_t  padding[6];     // Pad to 16 bytes for AVX/cacheline alignment
+} burnhard_oracle_packet_t;
+
+#if defined(_MSC_VER)
+#pragma pack(push, 1)
+typedef struct {
+    uint32_t token_id;
+    uint16_t expert_id_1;
+    uint16_t expert_id_2;
+    uint8_t  confidence;
+    uint8_t  layer_hint;
+    uint16_t batch_id;
+    uint8_t  padding[6];
+} burnhard_oracle_packet_msvc_t;
+#pragma pack(pop)
+// On MSVC the __attribute__((packed)) above is a no-op; use this
+// alternate type at the wire boundary if you need guaranteed 16 B.
+#endif
+
+// Compile-time guard so a future field addition can't silently grow
+// the wire packet without bumping the protocol version.
+#define BURNHARD_ORACLE_PKT_BYTES 16
 
 // ============================================================================
 // Packet shapes

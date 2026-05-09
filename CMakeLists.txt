@@ -62,6 +62,7 @@ set(SP_CORE_SRC
     core/src/shannon_prime_modelpack.c
     core/src/shannon_prime_pe.c
     core/src/sp_runmode.c
+    core/src/burnhard_config.c
     desktop/crt/sp_crt.c
     desktop/crt/sp_crt_dispatch.c
     desktop/crt/sp_theoretical.c)

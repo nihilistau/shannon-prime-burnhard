@@ -57,6 +57,26 @@ void sp_bridge_heartbeat_stop(sp_bridge_heartbeat_t *hb);
 
 const char *sp_bridge_state_name(sp_bridge_state_t s);
 
+// ----------------------------------------------------------------------------
+// Oracle packet send/recv — the speculative draft path the phone uses.
+// Both sides exchange fixed 16-byte burnhard_oracle_packet_t structures
+// over the SAME ADB-forwarded TCP socket the heartbeat already manages.
+// recv is non-blocking: it polls and returns 0 if no packet is waiting.
+// ----------------------------------------------------------------------------
+struct burnhard_oracle_packet;  // forward decl (defined in sp_bridge_proto.h)
+
+// Push one oracle packet. Phone calls this every locally-decoded token.
+// Returns 0 on success, -1 on socket error, -2 on partial write.
+int sp_bridge_oracle_send(int socket_fd,
+                          const struct burnhard_oracle_packet *pkt);
+
+// Try to pull one oracle packet (non-blocking). Returns:
+//    1  → packet read into *out
+//    0  → no packet available right now (try again later)
+//   -1  → socket error / connection lost
+int sp_bridge_oracle_try_recv(int socket_fd,
+                              struct burnhard_oracle_packet *out);
+
 #ifdef __cplusplus
 }
 #endif
