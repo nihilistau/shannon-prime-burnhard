@@ -24,6 +24,9 @@
 extern "C" {
 #include "sp_beast_canyon.h"
 #include "sp_optane.h"
+#include "burnhard_config.h"
+#include "sp_bridge_heartbeat.h"
+#include "sp_bridge_proto.h"
 }
 #endif
 
@@ -1198,6 +1201,58 @@ int main(int argc, char** argv) {
             else
                 std::fprintf(stderr, "[sp-engine] MoE curriculum not available (non-MoE model?)\n");
         }
+
+#if defined(SP_ENGINE_WITH_BEAST)
+        // Beast Canyon orchestrator + Furnace.  When --beast <gguf> is set,
+        // boot the heterogeneous reservoir + dual-GPU dispatcher alongside
+        // the regular forward path.  Optional sidecar engagement via
+        // SP_BEAST_ENABLE_SIDECAR=1 (handshakes with the S22U over ADB).
+        sp_beast_engine_t  beast_engine; memset(&beast_engine, 0, sizeof(beast_engine));
+        sp_bridge_heartbeat_t* beast_hb = nullptr;
+        bool beast_active = false;
+        if (!cc.beast_gguf_path.empty()) {
+            sp_beast_config_t bcfg; sp_beast_config_init(&bcfg);
+            bcfg.gguf_path      = cc.beast_gguf_path.c_str();
+            bcfg.force_cpu_only = false;
+            const int rc = sp_beast_init(&beast_engine, &bcfg);
+            if (rc == 0) {
+                beast_active = true;
+                std::fprintf(stderr,
+                    "[sp-engine] Furnace ARMED via --beast: reservoir=%s "
+                    "GPUs=%d sidecar=%s\n",
+                    cc.beast_gguf_path.c_str(),
+                    beast_engine.barrier.n_gpus,
+                    (beast_engine.sidecar.state == SP_SIDECAR_ONLINE) ? "ONLINE" : "offline");
+                if (beast_engine.sidecar.state == SP_SIDECAR_ONLINE) {
+                    beast_hb = sp_bridge_heartbeat_start(
+                        beast_engine.sidecar.socket_fd, /*period_ms=*/1000,
+                        nullptr, nullptr);
+                    if (beast_hb) {
+                        std::fprintf(stderr,
+                            "[sp-engine] Sidecar heartbeat thread up "
+                            "(1Hz, hysteresis 2/5/3)\n");
+                    }
+                }
+            } else {
+                std::fprintf(stderr,
+                    "[sp-engine] --beast init failed (rc=%d) — continuing "
+                    "without Furnace\n", rc);
+            }
+        }
+        // RAII helper so we tear Beast down even on early returns.
+        struct BeastGuard {
+            sp_beast_engine_t* eng;
+            sp_bridge_heartbeat_t** hb_slot;
+            bool* active;
+            ~BeastGuard() {
+                if (*active) {
+                    if (*hb_slot) { sp_bridge_heartbeat_stop(*hb_slot); *hb_slot = nullptr; }
+                    sp_beast_free(eng);
+                    *active = false;
+                }
+            }
+        } beast_guard{ &beast_engine, &beast_hb, &beast_active };
+#endif
 
         // Prefer GPU-resident cache when backend is GPU + ship path.
         std::unique_ptr<sp::engine::KvCache> kv;
@@ -2620,6 +2675,30 @@ int main(int argc, char** argv) {
         auto m = sp::engine::Model::load(cfg.model_path);
         if (!m) return 2;
         m->print_summary(stdout);
+
+        // Gemma4 diagnostic: dump relevant attention hparams.
+        if (m->architecture() == "gemma4") {
+            std::printf("\n  gemma4 attention hparams:\n");
+            const std::string p = "gemma4.";
+            auto dump_i = [&](const char* k) {
+                int64_t v = m->get_i64(std::string(p) + k, -1);
+                std::printf("    %s%s = %lld\n", p.c_str(), k, (long long)v);
+            };
+            dump_i("attention.head_count");
+            dump_i("attention.head_count_kv");
+            dump_i("attention.key_length");
+            dump_i("attention.value_length");
+            dump_i("attention.sliding_window");
+            dump_i("attention.sliding_window_pattern");
+            dump_i("attention.layer_indices.sliding_window");
+            dump_i("block_count");
+            dump_i("kv_shared_layer_frequency");
+            dump_i("attention.logit_softcapping");
+            dump_i("final_logit_softcapping");
+            dump_i("attention.query_pre_attn_scalar");
+            auto ff = m->get_f64(p + "attention.logit_softcapping", -1.0);
+            std::printf("    %sattention.logit_softcapping (f64) = %.2f\n", p.c_str(), ff);
+        }
 
         // Also show the first few tensors so the user can spot-check the
         // layout without loading a full inspection tool.
