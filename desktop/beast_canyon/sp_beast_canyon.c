@@ -64,6 +64,11 @@ void sp_beast_config_init(sp_beast_config_t *cfg) {
     cfg->n_experts_per_token = 0; // Use model's default
     cfg->expert_round_robin = true;
     cfg->enable_sidecar = false;
+    // Honour SP_BEAST_ENABLE_SIDECAR=1 to opt in without recompiling.
+    {
+        const char *env = getenv("SP_BEAST_ENABLE_SIDECAR");
+        if (env && env[0] == '1') cfg->enable_sidecar = true;
+    }
     cfg->sidecar_port = 9876;
     cfg->shredder_prefetch = 8;
     cfg->staging_elements = 0;   // Auto-size at init
