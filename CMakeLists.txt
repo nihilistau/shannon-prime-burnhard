@@ -391,6 +391,21 @@ if(SP_BUILD_TESTS)
         endif()
         add_test(NAME residue_matmul_verify COMMAND residue_matmul_verify)
     endif()
+    # Session-2.5 BURN_MOE expert FFN verifier — exercises the residue path
+    # against a real Qwen3.6 expert tensor (gate / up / down dequant from
+    # the Q4_K GGUF). The last math gate before the chat-path wiring.
+    if(EXISTS ${CMAKE_SOURCE_DIR}/tools/burn_moe_verify.c)
+        add_executable(burn_moe_verify tools/burn_moe_verify.c)
+        target_link_libraries(burn_moe_verify PRIVATE shannon_prime_core ggml)
+        target_include_directories(burn_moe_verify PRIVATE
+            ${CMAKE_SOURCE_DIR}/core/include
+            ${CMAKE_SOURCE_DIR}/vendor/ggml/include)
+        if(MSVC)
+            target_compile_options(burn_moe_verify PRIVATE /arch:AVX512)
+        else()
+            target_compile_options(burn_moe_verify PRIVATE -mavx512f -lm)
+        endif()
+    endif()
 endif()
 
 # --------------------------------------------------------------------
