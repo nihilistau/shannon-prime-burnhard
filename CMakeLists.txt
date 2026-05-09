@@ -236,7 +236,7 @@ add_library(sp_engine STATIC
     desktop/engine/src/prime_pe.cpp
     desktop/engine/src/http_server.cpp
     desktop/engine/src/sp_tensor.cpp
-    desktop/engine/src/sp_quant.cpp
+    core/src/sp_quant.cpp
     desktop/engine/src/sp_kernels_cpu.cpp
     desktop/engine/src/sp_threadpool.cpp
     desktop/engine/src/forward_native.cpp
