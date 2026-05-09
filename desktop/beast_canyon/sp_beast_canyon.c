@@ -13,6 +13,10 @@
 #include <string.h>
 #include <math.h>
 
+#ifdef SP_WITH_BRIDGE
+#  include "../../bridge/heartbeat/sp_bridge_heartbeat.h"
+#endif
+
 #ifdef _WIN32
 #  define WIN32_LEAN_AND_MEAN
 #  include <winsock2.h>
@@ -237,6 +241,22 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
     if (want_sidecar) {
         fprintf(stderr, "[BOOT] Stage 5: Connecting S22U sidecar...\n");
         sp_beast_sidecar_connect(engine);
+#ifdef SP_WITH_BRIDGE
+        // Spin up the heartbeat manager once the socket is live. Demotes
+        // run_mode from FULL_PULSE → DESKTOP_SOLO when the phone goes
+        // offline, and back up when it returns.
+        if (engine->sidecar.state == SP_SIDECAR_ONLINE) {
+            engine->bridge_heartbeat = sp_bridge_heartbeat_start(
+                engine->sidecar.socket_fd, 1000, NULL, engine);
+            if (!engine->bridge_heartbeat) {
+                fprintf(stderr,
+                        "[BOOT] WARN: heartbeat thread spawn failed; "
+                        "sidecar will not auto-recover from drops\n");
+            } else {
+                fprintf(stderr, "[BOOT] Bridge heartbeat: ONLINE (1Hz)\n");
+            }
+        }
+#endif
     } else {
         fprintf(stderr, "[BOOT] Stage 5: Sidecar disabled (mode=%s)\n",
                 sp_mode_name(engine->run_mode));
@@ -332,6 +352,13 @@ void sp_beast_free(sp_beast_engine_t *engine) {
     sp_shadow_steal_log_efficiency(&engine->shadow_steal);
     sp_shadow_steal_free(&engine->shadow_steal);
 
+#ifdef SP_WITH_BRIDGE
+    if (engine->bridge_heartbeat) {
+        sp_bridge_heartbeat_stop(
+            (sp_bridge_heartbeat_t *)engine->bridge_heartbeat);
+        engine->bridge_heartbeat = NULL;
+    }
+#endif
     sp_beast_sidecar_disconnect(engine);
 
     // Free ping-pong buffers

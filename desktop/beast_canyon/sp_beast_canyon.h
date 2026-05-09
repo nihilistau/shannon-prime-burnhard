@@ -171,6 +171,11 @@ typedef struct {
     sp_run_mode_t          run_mode;
     sp_hw_caps_t           hw_caps;
 
+    // Bridge heartbeat manager (sp_bridge_heartbeat_t* — opaque here to
+    // avoid dragging the bridge headers into every consumer). NULL when
+    // SP_WITH_BRIDGE is off or no sidecar connected.
+    void                  *bridge_heartbeat;
+
     // Current state
     int                    current_pos;  // Sequence position
     int                    current_layer; // Transformer layer

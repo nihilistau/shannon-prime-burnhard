@@ -49,6 +49,8 @@ option(SP_WITH_BEAST            "Enable Beast Canyon heterogeneous MoE" OFF)
 option(SP_BEAST_CUDA            "Beast Canyon: CUDA GPU detect"         OFF)
 option(SP_BEAST_VULKAN          "Beast Canyon: Vulkan iGPU detect"      OFF)
 option(SP_BEAST_LEVEL_ZERO      "Beast Canyon: Intel Level Zero iGPU"   OFF)
+option(SP_WITH_BRIDGE           "Build bridge: heartbeat + residue codec" ON)
+option(SP_TARGET_MOBILE         "Build mobile-only target (LONE_WOLF)"  OFF)
 
 # --------------------------------------------------------------------
 # Core shannon-prime math library (platform-independent)
@@ -217,6 +219,27 @@ if(SP_WITH_BEAST)
 endif()
 
 # --------------------------------------------------------------------
+# Bridge: heartbeat + residue migration codec (desktop ↔ phone fabric)
+# --------------------------------------------------------------------
+if(SP_WITH_BRIDGE)
+    add_library(sp_bridge STATIC
+        bridge/protocol/sp_bridge_codec.c
+        bridge/heartbeat/sp_bridge_heartbeat.c)
+    target_include_directories(sp_bridge PUBLIC
+        bridge/protocol
+        bridge/heartbeat
+        desktop/beast_canyon
+        core/include)
+    target_link_libraries(sp_bridge PUBLIC shannon_prime_core)
+    if(WIN32)
+        target_link_libraries(sp_bridge PUBLIC ws2_32)
+    elseif(NOT ANDROID)
+        target_link_libraries(sp_bridge PUBLIC pthread)
+    endif()
+    target_compile_features(sp_bridge PUBLIC c_std_11)
+endif()
+
+# --------------------------------------------------------------------
 # ggml (vendor submodule)
 # --------------------------------------------------------------------
 set(GGML_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
@@ -288,6 +311,12 @@ endif()
 if(SP_WITH_BEAST)
     target_link_libraries(sp_engine PUBLIC sp_beast_canyon)
     target_compile_definitions(sp_engine PUBLIC SP_ENGINE_WITH_BEAST=1)
+    if(SP_WITH_BRIDGE)
+        # Bridge headers wrap the sidecar transport; only needed when both
+        # are on. The compile def gates the heartbeat hook in sp_beast_canyon.c.
+        target_link_libraries(sp_beast_canyon PUBLIC sp_bridge)
+        target_compile_definitions(sp_beast_canyon PUBLIC SP_WITH_BRIDGE=1)
+    endif()
 endif()
 if(SP_WITH_CUDA)
     target_link_libraries(sp_engine PUBLIC shannon_prime_cuda_backend)
