@@ -64,6 +64,7 @@ set(SP_CORE_SRC
     core/src/sp_runmode.c
     core/src/burnhard_config.c
     core/src/shredder_q4k_inflight.c
+    core/src/burnhard_residue_matmul.c
     desktop/crt/sp_crt.c
     desktop/crt/sp_crt_dispatch.c
     desktop/crt/sp_theoretical.c)
@@ -369,15 +370,26 @@ if(SP_BUILD_TESTS)
         target_link_libraries(shred_verify PRIVATE shannon_prime_core)
         target_include_directories(shred_verify PRIVATE
             ${CMAKE_SOURCE_DIR}/core/include)
-        # AVX-512 enabled on MSVC + GCC/Clang. The kernel falls back to a
-        # scalar path when the macro isn't defined, so missing AVX-512 is
-        # not fatal — just slower.
         if(MSVC)
             target_compile_options(shred_verify PRIVATE /arch:AVX512)
         else()
             target_compile_options(shred_verify PRIVATE -mavx512f)
         endif()
         add_test(NAME shred_verify COMMAND shred_verify)
+    endif()
+    # Session-2 residue matmul verifier — proves the residue path matches
+    # stock fp32 matmul to within 1e-5 relative error per cell.
+    if(EXISTS ${CMAKE_SOURCE_DIR}/tools/residue_matmul_verify.c)
+        add_executable(residue_matmul_verify tools/residue_matmul_verify.c)
+        target_link_libraries(residue_matmul_verify PRIVATE shannon_prime_core)
+        target_include_directories(residue_matmul_verify PRIVATE
+            ${CMAKE_SOURCE_DIR}/core/include)
+        if(MSVC)
+            target_compile_options(residue_matmul_verify PRIVATE /arch:AVX512)
+        else()
+            target_compile_options(residue_matmul_verify PRIVATE -mavx512f -lm)
+        endif()
+        add_test(NAME residue_matmul_verify COMMAND residue_matmul_verify)
     endif()
 endif()
 

@@ -112,16 +112,21 @@ void sp_burnhard_garner_fp32(const int32_t *in_r1,
                               size_t n);
 
 // --- Diagnostics ------------------------------------------------------------
-// Returns the maximum |q| (post-discretisation) safely representable without
-// risking accumulator overflow over `inner_dim` matmul terms. Useful for the
-// matmul dispatcher to pick a scale that fits.
+// Returns the maximum |q| (post-discretisation) safely representable in
+// the residue matmul over `inner_dim` accumulation terms.
+//
+// The constraint is NOT int64 accumulator overflow (≤ 2^62) — it's the
+// Garner reconstruction window. Garner uniquely resolves int64 values in
+// (-M_PRODUCT/2, M_PRODUCT/2] ≈ (-2^61, 2^61]. If the true accumulated sum
+// exceeds 2^61, Garner aliases to the wrong equivalence class and the
+// matmul silently returns the wrong value.
+//
+// So the bound is: K · q_max² ≤ M_PRODUCT/2.
+// For K=8192:  q_max ≤ 2^24 (16,777,216).  ~10⁻⁸ quant precision per element.
 static inline int32_t
 sp_burnhard_safe_q_max(size_t inner_dim) {
-    // Each product is up to q_max^2; we want q_max^2 * inner_dim ≤ 2^62
-    // (one bit shy of int64 max so the sign bit stays free).
-    // q_max ≤ sqrt(2^62 / inner_dim).
     if (inner_dim == 0) return (int32_t)((1LL << 30) - 1);
-    int64_t bound = 1LL << 62;
+    int64_t bound = SP_M_PRODUCT >> 1;  // M_PRODUCT/2 — Garner window, NOT 2^62
     int64_t q2 = bound / (int64_t)inner_dim;
     int64_t q  = 1;
     while ((int64_t)(q + 1) * (int64_t)(q + 1) <= q2) q++;
