@@ -59,6 +59,7 @@ set(SP_CORE_SRC
     core/src/shannon_prime_cauchy.c
     core/src/shannon_prime_modelpack.c
     core/src/shannon_prime_pe.c
+    core/src/sp_runmode.c
     desktop/crt/sp_crt.c
     desktop/crt/sp_crt_dispatch.c
     desktop/crt/sp_theoretical.c)
@@ -79,6 +80,15 @@ target_include_directories(shannon_prime_core PUBLIC
     desktop/beast_canyon
     vendor/ggml/include)
 target_compile_features(shannon_prime_core PUBLIC c_std_11)
+# sp_runmode probes use TCP sockets and (on Linux) dlopen for CUDA detection.
+if(WIN32)
+    target_link_libraries(shannon_prime_core PUBLIC ws2_32)
+elseif(NOT ANDROID)
+    target_link_libraries(shannon_prime_core PUBLIC dl)
+endif()
+if(SP_WITH_CUDA)
+    target_compile_definitions(shannon_prime_core PUBLIC SP_WITH_CUDA)
+endif()
 
 if(SP_WITH_VULKAN OR SP_BEAST_VULKAN)
     find_package(Vulkan QUIET)

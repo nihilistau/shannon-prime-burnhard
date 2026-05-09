@@ -138,11 +138,21 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
     fprintf(stderr, "║  Heterogeneous MoE Orchestrator              ║\n");
     fprintf(stderr, "╚══════════════════════════════════════════════╝\n\n");
 
+    // ── Stage 0: Probe hardware, pick a run mode ────────────────────
+    engine->hw_caps  = sp_probe_hardware();
+    engine->run_mode = sp_select_mode(&engine->hw_caps);
+    sp_log_mode(engine->run_mode, &engine->hw_caps);
+
     // ── Stage 1: Map the Reservoir ──────────────────────────────────
     fprintf(stderr, "[BOOT] Stage 1: Mapping Optane reservoir...\n");
-    int rc = sp_optane_init(&engine->reservoir, cfg->gguf_path);
+    // LEGACY mode → no Optane available; force RAM-tier load so the engine
+    // still comes up. The caller's cfg->gguf_path remains the source.
+    sp_optane_tier_t requested =
+        (engine->run_mode == SP_MODE_LEGACY) ? SP_OPTANE_TIER_RAM
+                                              : SP_OPTANE_TIER_UNKNOWN;
+    int rc = sp_optane_init_tier(&engine->reservoir, cfg->gguf_path, requested);
     if (rc != 0) {
-        fprintf(stderr, "[BOOT] FATAL: Optane mapping failed (rc=%d)\n", rc);
+        fprintf(stderr, "[BOOT] FATAL: reservoir load failed (rc=%d)\n", rc);
         return rc;
     }
 
@@ -219,11 +229,17 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
 
     // ── Stage 5: Connect sidecar (optional) ─────────────────────────
     engine->sidecar.state = SP_SIDECAR_DISCONNECTED;
-    if (cfg->enable_sidecar) {
+    // Boot-probe found the phone → opportunistically enable sidecar even if
+    // the caller left enable_sidecar=false. They can still force it off via
+    // SP_RUN_MODE=DESKTOP_SOLO (which makes hw_caps.has_sidecar irrelevant).
+    bool want_sidecar = cfg->enable_sidecar ||
+                        (engine->run_mode == SP_MODE_FULL_PULSE);
+    if (want_sidecar) {
         fprintf(stderr, "[BOOT] Stage 5: Connecting S22U sidecar...\n");
         sp_beast_sidecar_connect(engine);
     } else {
-        fprintf(stderr, "[BOOT] Stage 5: Sidecar disabled (CPU handles Prime-PE)\n");
+        fprintf(stderr, "[BOOT] Stage 5: Sidecar disabled (mode=%s)\n",
+                sp_mode_name(engine->run_mode));
     }
 
     // ── Stage 5b: Initialize Shadow-Steal (Level Zero UHD dispatch) ──

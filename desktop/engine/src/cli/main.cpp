@@ -39,6 +39,7 @@ extern "C" {
 extern "C" {
 #include "shannon_prime.h"
 #include "sp_crt.h"
+#include "sp_runmode.h"
 }
 
 #include "ggml-backend.h"
@@ -380,6 +381,25 @@ int main(int argc, char** argv) {
     if (cmd == "version") {
         std::printf("sp-engine 0.1.0\n");
         return 0;
+    }
+
+    // Runtime mode probe — reports which silicon paths are wired this run.
+    // Logged once per invocation; downstream subsystems (Beast Canyon,
+    // bridge, KV cache prefetch heuristics) re-probe their slice as needed.
+    {
+        sp_hw_caps_t caps = sp_probe_hardware();
+        sp_run_mode_t mode = sp_select_mode(&caps);
+        sp_log_mode(mode, &caps);
+        if (cmd == "info") {
+            // 'info' verb prints the mode and exits — useful for ops scripts.
+            std::printf("mode=%s cuda=%d l0_igpu=%d optane=%d sidecar=%d "
+                        "mobile=%d optane_path=%s\n",
+                        sp_mode_name(mode),
+                        caps.has_cuda, caps.has_l0_igpu, caps.has_optane,
+                        caps.has_sidecar, caps.is_mobile_host,
+                        caps.optane_path[0] ? caps.optane_path : "(none)");
+            return 0;
+        }
     }
 
     // ──────────────────────────────────────────────────────────────────

@@ -696,31 +696,137 @@ static void sp_optane_build_expert_table(sp_optane_reservoir_t *res) {
 // Public API
 // ============================================================================
 
+const char *sp_optane_tier_name(sp_optane_tier_t t) {
+    switch (t) {
+        case SP_OPTANE_TIER_NATIVE:  return "NATIVE";
+        case SP_OPTANE_TIER_NVME:    return "NVME";
+        case SP_OPTANE_TIER_RAM:     return "RAM";
+        case SP_OPTANE_TIER_UNKNOWN:
+        default:                     return "UNKNOWN";
+    }
+}
+
+// Heuristic: classify the path's storage tier. Cheap; if we can't tell,
+// return NVME (the safest assumption — neither too eager nor too cautious
+// on prefetch).
+static sp_optane_tier_t sp_optane_detect_tier(const char *path) {
+    if (!path) return SP_OPTANE_TIER_UNKNOWN;
+#ifdef _WIN32
+    // Windows: nothing reliable at user-space without admin DeviceIoControl.
+    // Treat anything under a known Optane mount letter (env override) as
+    // NATIVE; otherwise NVME.
+    const char *opt_letters = getenv("SP_OPTANE_DRIVE_LETTERS");
+    if (opt_letters && path[0] && path[1] == ':') {
+        if (strchr(opt_letters, path[0]) != NULL) return SP_OPTANE_TIER_NATIVE;
+    }
+    return SP_OPTANE_TIER_NVME;
+#else
+    // Linux: /dev/pmem* or anything under a DAX mount → NATIVE.
+    if (strncmp(path, "/dev/pmem", 9) == 0) return SP_OPTANE_TIER_NATIVE;
+    if (strstr(path, "/optane/")  != NULL)  return SP_OPTANE_TIER_NATIVE;
+    if (strstr(path, "/dax/")     != NULL)  return SP_OPTANE_TIER_NATIVE;
+    return SP_OPTANE_TIER_NVME;
+#endif
+}
+
+// RAM-tier loader: slurp the whole file into a malloc'd buffer. Used when
+// the host has no usable mmap target (rare) or when LEGACY mode is forced
+// for testing. `base_ptr` is the malloc'd region; `mapping_handle`/`fd`
+// remain NULL/-1 so the regular munmap functions become no-ops, and the
+// free path frees the buffer based on the tier field.
+static int sp_optane_slurp_ram(sp_optane_reservoir_t *res, const char *path) {
+#ifdef _WIN32
+    HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+                               OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "[sp-optane] RAM tier: cannot open %s (err %lu)\n",
+                path, GetLastError());
+        return -1;
+    }
+    LARGE_INTEGER fsize;
+    if (!GetFileSizeEx(hFile, &fsize)) { CloseHandle(hFile); return -2; }
+    res->file_size = (uint64_t)fsize.QuadPart;
+    void *buf = malloc((size_t)res->file_size);
+    if (!buf) { CloseHandle(hFile); return -3; }
+    DWORD remaining = (DWORD)res->file_size, off = 0, got = 0;
+    while (remaining > 0) {
+        if (!ReadFile(hFile, (uint8_t *)buf + off, remaining, &got, NULL) ||
+            got == 0) {
+            free(buf); CloseHandle(hFile); return -4;
+        }
+        off += got; remaining -= got;
+    }
+    CloseHandle(hFile);
+    res->base_ptr = buf;
+    return 0;
+#else
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) { perror("[sp-optane] RAM tier: open"); return -1; }
+    struct stat st;
+    if (fstat(fd, &st) < 0) { close(fd); return -2; }
+    res->file_size = (uint64_t)st.st_size;
+    void *buf = malloc((size_t)res->file_size);
+    if (!buf) { close(fd); return -3; }
+    size_t off = 0;
+    while (off < res->file_size) {
+        ssize_t n = read(fd, (uint8_t *)buf + off, res->file_size - off);
+        if (n <= 0) { free(buf); close(fd); return -4; }
+        off += (size_t)n;
+    }
+    close(fd);
+    res->base_ptr = buf;
+    return 0;
+#endif
+}
+
 int sp_optane_init(sp_optane_reservoir_t *res, const char *gguf_path) {
+    return sp_optane_init_tier(res, gguf_path, SP_OPTANE_TIER_UNKNOWN);
+}
+
+int sp_optane_init_tier(sp_optane_reservoir_t *res, const char *gguf_path,
+                        sp_optane_tier_t requested_tier) {
     memset(res, 0, sizeof(*res));
 #ifndef _WIN32
     res->fd = -1;
 #endif
 
-    fprintf(stderr, "[sp-optane] Mapping reservoir: %s\n", gguf_path);
+    sp_optane_tier_t tier = (requested_tier != SP_OPTANE_TIER_UNKNOWN)
+                          ? requested_tier
+                          : sp_optane_detect_tier(gguf_path);
+    fprintf(stderr, "[sp-optane] Mapping reservoir: %s (tier=%s)\n",
+            gguf_path, sp_optane_tier_name(tier));
 
-    // Stage 1: Memory map the file
+    // Stage 1: Bring the bytes online — mmap or RAM slurp depending on tier
     uint64_t t0 = sp_time_us();
-
+    int rc;
+    if (tier == SP_OPTANE_TIER_RAM) {
+        rc = sp_optane_slurp_ram(res, gguf_path);
+    } else {
 #ifdef _WIN32
-    int rc = sp_optane_mmap_win32(res, gguf_path);
+        rc = sp_optane_mmap_win32(res, gguf_path);
 #else
-    int rc = sp_optane_mmap_posix(res, gguf_path);
+        rc = sp_optane_mmap_posix(res, gguf_path);
 #endif
+        // Auto-fallback: mmap failed and caller didn't pin a tier — try RAM.
+        if (rc != 0 && requested_tier == SP_OPTANE_TIER_UNKNOWN) {
+            fprintf(stderr,
+                    "[sp-optane] mmap failed (rc=%d); falling back to RAM tier\n",
+                    rc);
+            rc = sp_optane_slurp_ram(res, gguf_path);
+            if (rc == 0) tier = SP_OPTANE_TIER_RAM;
+        }
+    }
     if (rc != 0) return rc;
+    res->tier = tier;
 
     uint64_t t1 = sp_time_us();
     res->boot_map_us = t1 - t0;
 
-    fprintf(stderr, "[sp-optane] Mapped %.2f MB in %.2f ms%s\n",
+    fprintf(stderr, "[sp-optane] Loaded %.2f MB in %.2f ms (tier=%s%s)\n",
             (double)res->file_size / (1024.0 * 1024.0),
             (double)res->boot_map_us / 1000.0,
-            res->dax_enabled ? " (DAX)" : "");
+            sp_optane_tier_name(res->tier),
+            res->dax_enabled ? ", DAX" : "");
 
     // Stage 2: Parse GGUF header and tensor descriptors
     uint64_t t2 = sp_time_us();
@@ -761,12 +867,18 @@ int sp_optane_init(sp_optane_reservoir_t *res, const char *gguf_path) {
 }
 
 void sp_optane_free(sp_optane_reservoir_t *res) {
-    fprintf(stderr, "[sp-optane] Releasing reservoir...\n");
+    fprintf(stderr, "[sp-optane] Releasing reservoir (tier=%s)...\n",
+            sp_optane_tier_name(res->tier));
+    if (res->tier == SP_OPTANE_TIER_RAM) {
+        // RAM tier owns base_ptr via malloc; no mapping handles to release.
+        if (res->base_ptr) free(res->base_ptr);
+    } else {
 #ifdef _WIN32
-    sp_optane_munmap_win32(res);
+        sp_optane_munmap_win32(res);
 #else
-    sp_optane_munmap_posix(res);
+        sp_optane_munmap_posix(res);
 #endif
+    }
     memset(res, 0, sizeof(*res));
 #ifndef _WIN32
     res->fd = -1;
