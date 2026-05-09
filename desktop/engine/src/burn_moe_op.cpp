@@ -111,10 +111,29 @@ static int expert_ffn_one_token(const float *x, size_t n_embd, size_t n_ff,
 // ----------------------------------------------------------------------------
 struct burn_moe_userdata {
     int n_expert_used;
-    // Reservoir for per-expert dequant scratch — one buffer reused per
-    // token/expert step inside the callback. Size n_embd*n_ff fp32.
-    // Allocated on first use (we don't know the dims at build time).
 };
+
+// ----------------------------------------------------------------------------
+// Memory safety cap. Per-call dequant cache is bounded to this many unique
+// experts. Each entry holds three fp32 buffers of n_embd*n_ff. For Qwen3.6
+// 35B-A3B (n_embd=2048, n_ff=512) that's 3 × 4 MiB = 12 MiB per cached
+// expert. Cap × 12 MiB = worst-case per-call host scratch.
+//
+// 32 entries → ~384 MiB ceiling — safe on a 32 GB host even with the
+// 19.7 GB GGUF mmap + ggml CUDA backend + Beast Canyon co-resident.
+// Realistic decode (n_tokens=1) needs only 8 unique experts per call so
+// the cap rarely matters; the cap exists to bound prefill of long
+// sequences where naive caching would saturate at n_expert (256 = ~3 GB).
+//
+// A previous integration test on 35B with audit mode (which runs BOTH
+// the host residue path AND ggml's mul_mat_id) saturated host RAM and
+// took down the system. This cap (plus the budget log below) means the
+// Furnace can be invoked on any model size without that risk.
+static constexpr size_t SP_BURN_MOE_DEQUANT_CACHE_CAP = 32;
+
+// First-call diagnostic guard. Set to 1 by burn_moe_compute on first
+// invocation so we don't spam the budget line per layer per token.
+static int s_burn_moe_logged_budget = 0;
 
 // ----------------------------------------------------------------------------
 // The compute callback. Runs once per graph compute (single-thread for
@@ -138,6 +157,30 @@ static void burn_moe_compute(ggml_tensor *dst, int ith, int nth, void *userdata)
     const size_t n_embd   = (size_t)cur->ne[0];
     const size_t n_tokens = (size_t)cur->ne[1];
     const size_t n_ff     = (size_t)gate_exps->ne[1];
+
+    // First-call budget log — surfaces the per-call host scratch ceiling
+    // BEFORE any allocation, so OOMs are predictable instead of silent.
+    if (!s_burn_moe_logged_budget) {
+        const size_t per_expert_fp32_bytes = 3 * n_embd * n_ff * sizeof(float);
+        const size_t cache_cap_bytes =
+            SP_BURN_MOE_DEQUANT_CACHE_CAP * per_expert_fp32_bytes;
+        const size_t io_buffers_bytes =
+            (n_embd * n_tokens * sizeof(float))           // cur_host
+            + (n_expert_used * n_tokens * sizeof(int32_t))// sel_host
+            + (n_expert_used * n_tokens * sizeof(float))  // wgt_host
+            + (n_embd * n_tokens * sizeof(float));        // out_host
+        std::fprintf(stderr,
+            "[burn_moe] budget per call: I/O=%.1f MiB  "
+            "dequant_cache_cap=%zu × %.1f MiB = %.1f MiB  "
+            "(n_embd=%zu n_ff=%zu n_tokens=%zu k=%d)\n",
+            (double)io_buffers_bytes / (1024.0 * 1024.0),
+            SP_BURN_MOE_DEQUANT_CACHE_CAP,
+            (double)per_expert_fp32_bytes / (1024.0 * 1024.0),
+            (double)cache_cap_bytes / (1024.0 * 1024.0),
+            n_embd, n_ff, n_tokens, n_expert_used);
+        s_burn_moe_logged_budget = 1;
+    }
+
     // Sanity — these must match what the graph claimed.
     if ((size_t)dst->ne[0] != n_embd || (size_t)dst->ne[1] != n_tokens) {
         std::fprintf(stderr,
@@ -168,25 +211,47 @@ static void burn_moe_compute(ggml_tensor *dst, int ith, int nth, void *userdata)
     std::vector<float> down_W(n_embd * n_ff);
     std::vector<float> contrib(n_embd);
 
-    // Cache the dequantised expert weights — many tokens select the same
-    // experts, so dequanting on first hit and reusing avoids a 5-10× cost.
-    // Key: expert_idx → pointer to dequanted gate/up/down buffers.
-    // Bounded by n_expert (256 for Qwen3.6 35B-A3B); each buffer is
-    // n_embd*n_ff fp32 = 4 MiB for 2048×512, so the worst case caches
-    // ~3 GB of fp32 expert weights. For realistic prompts where only
-    // a few dozen experts are touched, the cache is much smaller.
+    // Bounded LRU dequant cache. Many tokens select the same experts so
+    // we cache the dequantised fp32 weights and reuse on hit. Cap is
+    // SP_BURN_MOE_DEQUANT_CACHE_CAP; on miss + full cache we evict the
+    // least-recently-used entry so memory stays bounded regardless of
+    // prompt length or expert-routing pathology.
     struct expert_cache_entry {
         int expert_idx;
+        uint64_t lru_tick;          // monotonic counter; smallest = oldest
         std::vector<float> gate;
         std::vector<float> up;
         std::vector<float> down;
     };
     std::vector<expert_cache_entry> cache;
+    cache.reserve(SP_BURN_MOE_DEQUANT_CACHE_CAP);
+    uint64_t lru_clock = 0;
     auto find_or_dequant = [&](int e) -> const expert_cache_entry * {
-        for (auto &c : cache) if (c.expert_idx == e) return &c;
+        // Hit?
+        for (auto &c : cache) {
+            if (c.expert_idx == e) {
+                c.lru_tick = ++lru_clock;
+                return &c;
+            }
+        }
+        // Miss. Evict if at cap.
+        if (cache.size() >= SP_BURN_MOE_DEQUANT_CACHE_CAP) {
+            size_t oldest_idx = 0;
+            uint64_t oldest_tick = cache[0].lru_tick;
+            for (size_t i = 1; i < cache.size(); ++i) {
+                if (cache[i].lru_tick < oldest_tick) {
+                    oldest_tick = cache[i].lru_tick;
+                    oldest_idx  = i;
+                }
+            }
+            // Swap-and-pop to keep amortised O(1) eviction.
+            cache[oldest_idx] = std::move(cache.back());
+            cache.pop_back();
+        }
         cache.emplace_back();
         auto &c = cache.back();
         c.expert_idx = e;
+        c.lru_tick   = ++lru_clock;
         c.gate.resize(n_embd * n_ff);
         c.up  .resize(n_embd * n_ff);
         c.down.resize(n_embd * n_ff);
