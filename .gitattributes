@@ -1,0 +1,18 @@
+* text=auto
+
+# Shell scripts must stay LF — they're executed on Android / Linux.
+*.sh text eol=lf
+
+# Binary assets — never normalize line endings.
+*.pdf  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.bin  binary
+*.gguf binary
+*.spv  binary
+*.zip  binary
+*.so   binary
+*.dll  binary
+*.exe  binary

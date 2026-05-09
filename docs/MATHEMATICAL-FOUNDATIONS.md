@@ -1,6 +1,12 @@
 # Mathematical Foundations
 
-The theoretical framework behind Shannon-Prime. This document covers the mathematics in sufficient detail to understand why the system works, what guarantees it provides, and where the empirical laws come from. For implementation details, see [COMPRESSION-FEATURES.md](COMPRESSION-FEATURES.md). For the full proofs and experimental validation, see the papers.
+> **Full derivations live in the archive repo:**
+> [shannon-prime-bernhard/papers/](https://github.com/nihilistau/shannon-prime-bernhard/tree/main/papers) —
+> *position_is_arithmetic*, *kv_cache_is_a_view*, *multiplicative_lattice*,
+> *music_of_the_spheres*, *adventures_through_a_10d_manifold*, plus the
+> *Decode Chain Amplification* and *Mertens Sea* reference papers.
+
+The theoretical framework behind Shannon-Prime. This document covers the mathematics in sufficient detail to understand why the system works, what guarantees it provides, and where the empirical laws come from. For implementation details, see [COMPRESSION-FEATURES.md](COMPRESSION-FEATURES.md). For the full proofs and experimental validation, see the papers in the bernhard archive.
 
 ---
 

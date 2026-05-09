@@ -34,6 +34,7 @@
 #include "sp_shredder_crt.h"
 #include "sp_sidecar_proto.h"
 #include "../../core/include/shannon_prime.h"
+#include "../../core/include/sp_runmode.h"
 
 #include <stdint.h>
 #include <stddef.h>
@@ -165,6 +166,15 @@ typedef struct {
 
     // Configuration
     sp_beast_config_t      config;
+
+    // Active runtime mode (probed at sp_beast_init).
+    sp_run_mode_t          run_mode;
+    sp_hw_caps_t           hw_caps;
+
+    // Bridge heartbeat manager (sp_bridge_heartbeat_t* — opaque here to
+    // avoid dragging the bridge headers into every consumer). NULL when
+    // SP_WITH_BRIDGE is off or no sidecar connected.
+    void                  *bridge_heartbeat;
 
     // Current state
     int                    current_pos;  // Sequence position

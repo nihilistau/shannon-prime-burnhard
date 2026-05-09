@@ -106,6 +106,21 @@ typedef struct {
 } sp_optane_expert_t;
 
 // ============================================================================
+// Reservoir tier — what kind of storage backs the mapped file
+// ============================================================================
+//
+// Latency expectations the prefetch heuristics use:
+//   NATIVE: DAX-mode persistent memory, sub-µs page reads
+//   NVME  : page-cached mmap on regular SSD, ~10µs page reads
+//   RAM   : whole file slurped into a malloc'd buffer (no fs left)
+typedef enum {
+    SP_OPTANE_TIER_UNKNOWN = 0,
+    SP_OPTANE_TIER_NATIVE  = 1,
+    SP_OPTANE_TIER_NVME    = 2,
+    SP_OPTANE_TIER_RAM     = 3,
+} sp_optane_tier_t;
+
+// ============================================================================
 // Optane Reservoir — the monolithic map
 // ============================================================================
 
@@ -168,6 +183,7 @@ typedef struct {
     uint64_t     boot_index_us;       // Time to build expert pointer table
     bool         dax_enabled;         // True if DAX was detected
     bool         is_moe;              // True if model has expert tensors
+    sp_optane_tier_t tier;            // Storage tier — drives prefetch policy
 } sp_optane_reservoir_t;
 
 // ============================================================================
@@ -178,6 +194,17 @@ typedef struct {
 // Returns 0 on success, negative on error.
 // After this call, all tensor data is accessible via direct pointers.
 int sp_optane_init(sp_optane_reservoir_t *res, const char *gguf_path);
+
+// Variant: explicitly request a tier. Pass SP_OPTANE_TIER_UNKNOWN to
+// auto-detect (same as sp_optane_init). Pass SP_OPTANE_TIER_RAM to force
+// the slurp-into-malloc path even if mmap would have worked — useful in
+// LEGACY mode when the host has no usable mmap target.
+int sp_optane_init_tier(sp_optane_reservoir_t *res,
+                        const char *gguf_path,
+                        sp_optane_tier_t requested_tier);
+
+// String for logs.
+const char *sp_optane_tier_name(sp_optane_tier_t t);
 
 // Shutdown: unmap and close handles. One surgical strike.
 void sp_optane_free(sp_optane_reservoir_t *res);
