@@ -174,6 +174,13 @@ public:
     // Print curriculum + prefetch statistics (no-op if not enabled).
     void print_moe_curriculum_stats() const;
 
+    // Furnace dispatch mode for routed-expert FFN matmuls.
+    //   0 = off    (default — ggml_mul_mat_id, unchanged)
+    //   1 = audit  (run BOTH paths; output uses ggml's; log delta)
+    //   2 = on     (Furnace residue path only; ggml's mul_mat_id skipped)
+    // Set after create() and before forward/prefill/decode.
+    void set_furnace_dispatch(int mode);
+
     // Hparams the caller set at create(); exposed for diagnostics.
     int n_embd()  const;
     int n_vocab() const;

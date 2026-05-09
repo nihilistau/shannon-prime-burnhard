@@ -18,6 +18,8 @@
 // MoE expert curriculum + predictive prefetch
 #include "sp_moe_curriculum.h"
 #include "sp_prefetch_engine.h"
+// BurnHard Furnace dispatch — residue-matmul replacement for routed experts
+#include "burn_moe_op.h"
 
 #ifdef SP_ENGINE_WITH_CUDA
 #include <cuda_runtime.h>
@@ -79,6 +81,11 @@ struct ForwardContext::Impl {
     // layers — even the global ones with head_dim=512 — use this single
     // value, defaulting to 256 when the GGUF stores -1 / no key.
     int   gemma4_query_pre_attn_scalar = 0;
+
+    // Furnace dispatch mode (0=off, 1=audit, 2=on). Set by Engine from
+    // Config::FurnaceDispatch. Drives the BURN_MOE custom-op path inside
+    // build_moe_ffn — see desktop/engine/src/burn_moe_op.cpp.
+    int   furnace_dispatch = 0;
 
     // FFN activation. Llama/qwen/mistral/phi/granite use SwiGLU
     // (silu(gate) * up); gemma (1/2/3) uses GeGLU with the tanh
@@ -271,6 +278,21 @@ void ForwardContext::print_crt_stats() const {
     if (impl_->crt_dispatch) {
         sp_crt_dispatch_stats(impl_->crt_dispatch);
     }
+}
+
+void ForwardContext::set_furnace_dispatch(int mode) {
+    if (mode < 0 || mode > 2) {
+        std::fprintf(stderr,
+            "[sp-engine] set_furnace_dispatch: mode %d out of range [0,2], "
+            "ignoring\n", mode);
+        return;
+    }
+    impl_->furnace_dispatch = mode;
+    static const char *NAMES[] = { "off", "audit", "on" };
+    std::fprintf(stderr,
+        "[sp-engine] Furnace dispatch: %s (replaces ggml_mul_mat_id for "
+        "routed-expert FFN)\n",
+        NAMES[mode]);
 }
 
 bool ForwardContext::enable_moe_curriculum() {
@@ -888,7 +910,11 @@ static ggml_tensor* build_moe_ffn(ggml_context* gctx,
                                    bool  norm_topk_prob,
                                    float expert_weights_scale,
                                    ggml_tensor** selected_capture = nullptr,
-                                   sp_crt_dispatch_t* crt = nullptr) {
+                                   sp_crt_dispatch_t* crt = nullptr,
+                                   // Furnace dispatch mode (0=off, 1=audit, 2=on).
+                                   // Audit and On reroute routed-expert matmuls
+                                   // through the BURN_MOE custom op (residue path).
+                                   int furnace_dispatch = 0) {
     const int n_tokens = (int)cur->ne[1];
     const int n_embd   = (int)cur->ne[0];
 
@@ -943,23 +969,61 @@ static ggml_tensor* build_moe_ffn(ggml_context* gctx,
         }
     }
 
-    ggml_tensor* cur_3d = ggml_reshape_3d(gctx, cur, n_embd, 1, n_tokens);
+    // 5. Routed-expert FFN. Two paths:
+    //   * Stock ggml — three ggml_mul_mat_id + SiLU + mul + weighted sum.
+    //   * Furnace dispatch — single BURN_MOE custom op runs the same FFN
+    //     on host using the BurnHard residue matmul (Sessions 1-2.5),
+    //     dequantising selected experts on-the-fly via ggml's type_traits.
+    // Audit mode runs BOTH and keeps stock as the output (Furnace shadow
+    // is captured for the audit log via a separate output tensor).
+    ggml_tensor* moe_out = nullptr;
+    ggml_tensor* moe_out_furnace = nullptr;
 
-    ggml_tensor* up_e   = ggml_mul_mat_id(gctx, L.ffn_up_exps,   cur_3d, selected);  // [n_ff, k, n]
-    ggml_tensor* gate_e = ggml_mul_mat_id(gctx, L.ffn_gate_exps, cur_3d, selected);  // [n_ff, k, n]
-    gate_e = ggml_silu(gctx, gate_e);
-    ggml_tensor* par = ggml_mul(gctx, gate_e, up_e);                                  // [n_ff, k, n]
-    ggml_tensor* down_e = ggml_mul_mat_id(gctx, L.ffn_down_exps, par, selected);     // [n_embd, k, n]
+    const bool run_stock   = (furnace_dispatch != 2);  // off=run, audit=run, on=skip
+    const bool run_furnace = (furnace_dispatch != 0);  // off=skip, audit=run, on=run
 
-    // 6. Weight each expert output and sum across k.
-    ggml_tensor* weighted = ggml_mul(gctx, down_e, weights);                          // [n_embd, k, n]
+    if (run_stock) {
+        ggml_tensor* cur_3d = ggml_reshape_3d(gctx, cur, n_embd, 1, n_tokens);
+        ggml_tensor* up_e   = ggml_mul_mat_id(gctx, L.ffn_up_exps,   cur_3d, selected);  // [n_ff, k, n]
+        ggml_tensor* gate_e = ggml_mul_mat_id(gctx, L.ffn_gate_exps, cur_3d, selected);  // [n_ff, k, n]
+        gate_e = ggml_silu(gctx, gate_e);
+        ggml_tensor* par = ggml_mul(gctx, gate_e, up_e);                                  // [n_ff, k, n]
+        ggml_tensor* down_e = ggml_mul_mat_id(gctx, L.ffn_down_exps, par, selected);     // [n_embd, k, n]
 
-    // Reduce over k (dim 1). sum_rows sums dim 0, so permute k to the
-    // front, sum, and reshape the leading 1 off.
-    ggml_tensor* weighted_kfirst = ggml_cont(gctx,
-        ggml_permute(gctx, weighted, 1, 0, 2, 3));                                    // [k, n_embd, n]
-    ggml_tensor* summed = ggml_sum_rows(gctx, weighted_kfirst);                       // [1, n_embd, n]
-    ggml_tensor* moe_out = ggml_reshape_2d(gctx, summed, n_embd, n_tokens);           // [n_embd, n]
+        // 6. Weight each expert output and sum across k.
+        ggml_tensor* weighted = ggml_mul(gctx, down_e, weights);                          // [n_embd, k, n]
+
+        // Reduce over k (dim 1). sum_rows sums dim 0, so permute k to the
+        // front, sum, and reshape the leading 1 off.
+        ggml_tensor* weighted_kfirst = ggml_cont(gctx,
+            ggml_permute(gctx, weighted, 1, 0, 2, 3));                                    // [k, n_embd, n]
+        ggml_tensor* summed = ggml_sum_rows(gctx, weighted_kfirst);                       // [1, n_embd, n]
+        moe_out = ggml_reshape_2d(gctx, summed, n_embd, n_tokens);                        // [n_embd, n]
+    }
+
+    if (run_furnace) {
+        // Furnace path: one custom op replaces the entire routed-expert
+        // FFN (gate, up, down, silu, mul, weighted sum). Output shape is
+        // [n_embd, n_tokens] — matches the stock moe_out.
+        moe_out_furnace = sp_build_burn_moe_op(gctx, cur, selected, weights,
+                                                  L.ffn_gate_exps, L.ffn_up_exps,
+                                                  L.ffn_down_exps, n_expert_used);
+    }
+
+    if (furnace_dispatch == 2) {
+        // ON: Furnace is the only path; use its output downstream.
+        moe_out = moe_out_furnace;
+    } else if (furnace_dispatch == 1) {
+        // AUDIT: keep stock as output. Mark Furnace shadow as a graph
+        // output so the post-compute step can read it back and compute
+        // the per-layer NRMSE delta.
+        ggml_set_output(moe_out_furnace);
+        // (audit-side capture wiring lives in forward_full's epilogue —
+        //  TODO: thread cap_furnace[i] = moe_out_furnace through the
+        //  layer dispatch loop. For now the shadow is computed but not
+        //  yet differenced — adding that hook is the next sub-step.)
+    }
+    // furnace_dispatch == 0: moe_out is stock, moe_out_furnace is null.
 
     // 7. Shared expert (qwen35moe: sigmoid-gated, runs for every token).
     if (L.ffn_gate_shexp && L.ffn_up_shexp && L.ffn_down_shexp) {
@@ -1355,7 +1419,8 @@ static ggml_tensor* build_block_moe_attn(ggml_context* gctx,
                                           ggml_tensor** k_capture = nullptr,
                                           ggml_tensor** v_capture = nullptr,
                                           ggml_tensor** selected_capture = nullptr,
-                                          sp_crt_dispatch_t* crt = nullptr) {
+                                          sp_crt_dispatch_t* crt = nullptr,
+                                          int furnace_dispatch = 0) {
     // Qwen3-Next gated attention.
     //
     // The wq projection is 2× wider than a standard attention head
@@ -1487,7 +1552,7 @@ static ggml_tensor* build_block_moe_attn(ggml_context* gctx,
         ffn_out = build_moe_ffn(gctx, xb, L,
                                 n_expert, n_expert_used,
                                 norm_topk_prob, expert_weights_scale,
-                                selected_capture, crt);
+                                selected_capture, crt, furnace_dispatch);
     } else {
         // Dense SwiGLU FFN (qwen35 non-MoE hybrid).
         ggml_tensor* gate = ggml_mul_mat(gctx, L.ffn_gate, xb);
@@ -1552,7 +1617,8 @@ static ggml_tensor* build_block_gdn(ggml_context* gctx,
                                      bool  norm_topk_prob,
                                      float expert_weights_scale,
                                      bool  is_moe = true,
-                                     ggml_tensor** selected_capture = nullptr) {
+                                     ggml_tensor** selected_capture = nullptr,
+                                     int   furnace_dispatch = 0) {
     const int qk_dim = num_qk_heads * head_qk_dim;  // 2048
     const int v_dim  = num_v_heads  * head_v_dim;   // 4096
     const size_t ele = ggml_type_size(GGML_TYPE_F32);
@@ -1758,7 +1824,8 @@ static ggml_tensor* build_block_gdn(ggml_context* gctx,
         ffn_out = build_moe_ffn(gctx, xb, L,
                                 n_expert, n_expert_used,
                                 norm_topk_prob, expert_weights_scale,
-                                selected_capture);
+                                selected_capture, /*crt=*/nullptr,
+                                furnace_dispatch);
     } else {
         // Dense SwiGLU FFN (qwen35 non-MoE hybrid).
         // For GDN layers the pre-norm is attn_post_norm (already applied
@@ -2067,7 +2134,8 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
                                       capture ? &k_cap : nullptr,
                                       capture ? &v_cap : nullptr,
                                       curriculum_active ? &sel_cap : nullptr,
-                                      impl_->crt_dispatch);
+                                      impl_->crt_dispatch,
+                                      impl_->furnace_dispatch);
             break;
         }
         case LlamaLayerKind::MOE_GDN: {
@@ -2094,7 +2162,8 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
                                  impl_->n_expert, impl_->n_expert_used,
                                  impl_->norm_topk_prob, impl_->expert_weights_scale,
                                  impl_->is_moe,
-                                 curriculum_active ? &sel_cap : nullptr);
+                                 curriculum_active ? &sel_cap : nullptr,
+                                 impl_->furnace_dispatch);
             if (conv_out) { ggml_set_output(conv_out); gdn_conv_state_out[(size_t)i] = conv_out; }
             if (ssm_out)  { ggml_set_output(ssm_out);  gdn_ssm_state_out[(size_t)i]  = ssm_out;  }
             break;

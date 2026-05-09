@@ -282,6 +282,7 @@ add_library(sp_engine STATIC
     desktop/engine/src/tokenizer.cpp
     desktop/engine/src/llama_weights.cpp
     desktop/engine/src/forward.cpp
+    desktop/engine/src/burn_moe_op.cpp
     desktop/engine/src/prime_pe.cpp
     desktop/engine/src/http_server.cpp
     desktop/engine/src/sp_tensor.cpp

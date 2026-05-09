@@ -95,6 +95,21 @@ struct Config {
     // This replaces the normal forward path for MoE layers.
     std::string beast_gguf_path;
 
+    // Furnace dispatch — replaces ggml_mul_mat_id for routed-expert FFN
+    // matmuls with the BurnHard residue-matmul host kernel. Three modes:
+    //
+    //   Off    — chat path unchanged (default). ggml graph runs as-is.
+    //   Audit  — both paths run; output uses ggml's; per-layer NRMSE +
+    //            max-abs delta logged to console + bench/burn_audit.csv.
+    //            Costs roughly 2× the MoE FFN compute per token.
+    //   On     — Furnace residue path only; ggml's mul_mat_id skipped
+    //            for routed experts. Production speed mode.
+    //
+    // Shared expert (qwen35moe ffn_*_shexp) stays on the standard ggml
+    // path in all modes — it's small (~33 MB) and "permanent warm".
+    enum class FurnaceDispatch { Off, Audit, On };
+    FurnaceDispatch furnace_dispatch = FurnaceDispatch::Off;
+
     // Positional-encoding mode.
     // Default is PrimePe (lattice-aligned RoPE frequencies) — proven −0.6%
     // to −0.8% PPL improvement across architectures at zero runtime cost.

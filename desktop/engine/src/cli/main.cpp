@@ -370,6 +370,24 @@ static int parse_config_flag(sp::engine::Config& cfg, const char* a, const char*
     if (a_eq("--system12"))                       { cfg.system12 = true; return 1; }
     if (a_eq("--crt-split"))                      { cfg.crt_split = true; return 1; }
     if (a_eq("--moe-curriculum"))                  { cfg.moe_curriculum = true; return 1; }
+    // --furnace-dispatch=<off|audit|on>  — see Config::FurnaceDispatch.
+    {
+        const char *fd_prefix = "--furnace-dispatch=";
+        const size_t fd_len   = strlen(fd_prefix);
+        if (a && strncmp(a, fd_prefix, fd_len) == 0) {
+            const char *val = a + fd_len;
+            if      (strcmp(val, "off")   == 0) cfg.furnace_dispatch = sp::engine::Config::FurnaceDispatch::Off;
+            else if (strcmp(val, "audit") == 0) cfg.furnace_dispatch = sp::engine::Config::FurnaceDispatch::Audit;
+            else if (strcmp(val, "on")    == 0) cfg.furnace_dispatch = sp::engine::Config::FurnaceDispatch::On;
+            else {
+                std::fprintf(stderr,
+                    "[sp-engine] --furnace-dispatch: unknown mode '%s' "
+                    "(want off|audit|on)\n", val);
+                return 0;  // signal "unknown" so caller errors
+            }
+            return 1;
+        }
+    }
     if (a_eq("--beast") && has_next)              { cfg.beast_gguf_path = next; return 2; }
     if (a_eq("--s12-threshold") && has_next) { cfg.s12_threshold = (float)std::atof(next); return 2; }
     if (a_eq("--s12-sys2")      && has_next) { cfg.s12_sys2 = next; return 2; }
@@ -1200,6 +1218,16 @@ int main(int argc, char** argv) {
                 std::fprintf(stderr, "[sp-engine] MoE curriculum active\n");
             else
                 std::fprintf(stderr, "[sp-engine] MoE curriculum not available (non-MoE model?)\n");
+        }
+
+        // Furnace dispatch — replaces ggml_mul_mat_id for routed-expert
+        // FFN matmuls with the BurnHard residue path. See Config::FurnaceDispatch.
+        {
+            using FD = sp::engine::Config::FurnaceDispatch;
+            const int mode = (cc.furnace_dispatch == FD::Off)   ? 0
+                            : (cc.furnace_dispatch == FD::Audit) ? 1
+                            : 2;  // FD::On
+            if (mode != 0) fc->set_furnace_dispatch(mode);
         }
 
 #if defined(SP_ENGINE_WITH_BEAST)
