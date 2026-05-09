@@ -288,6 +288,54 @@ bool LlamaWeights::bind_tensors_(LlamaWeights& w, ggml_context* tctx,
             }
         }
     }
+
+    // ── Gemma4 per-layer geometry + V-substitution ──────────────────
+    // Gemma4 has a local/global layer mix with DIFFERENT per-layer
+    // head_dim and n_head_kv. Layers without attn_v.weight in the GGUF
+    // use the K projection result (Kcur) as V at runtime — this matches
+    // the reference Gemma4Attention pytorch / llama.cpp semantics. Mark
+    // such layers with `gemma4_v_shared = true` and leave L.wv = nullptr;
+    // the forward builder substitutes V=Kcur on those layers.
+    //
+    // Per-layer head_dim and n_head_kv are derived from the actual Q/K
+    // weight tensor element counts: head_dim_il = q_features / n_head;
+    // n_head_kv_il = k_features / head_dim_il. These override the model-
+    // wide values inside the Gemma4 forward path.
+    if (arch == "gemma4") {
+        const int n_head      = (int)model.n_head();
+        const uint32_t n_embd = model.n_embd();
+        int n_v_substituted = 0;
+        for (int i = 0; i < n_layer; ++i) {
+            LlamaLayer& L = w.layers_[(size_t)i];
+            if (!L.wq || !L.wk) continue;
+
+            const int64_t q_elems = ggml_nelements(L.wq);
+            const int64_t k_elems = ggml_nelements(L.wk);
+            if (q_elems <= 0 || k_elems <= 0) continue;
+
+            const int q_features = (int)(q_elems / (int64_t)n_embd);
+            const int k_features = (int)(k_elems / (int64_t)n_embd);
+            if (n_head <= 0) continue;
+            const int head_dim_il   = q_features / n_head;
+            if (head_dim_il <= 0) continue;
+            const int n_head_kv_il  = k_features / head_dim_il;
+            if (n_head_kv_il <= 0) continue;
+
+            L.gemma4_head_dim   = head_dim_il;
+            L.gemma4_n_head_kv  = n_head_kv_il;
+            L.gemma4_n_rot      = head_dim_il;  // Gemma4 RoPE = full head_dim
+
+            if (!L.wv) {
+                L.gemma4_v_shared = true;
+                ++n_v_substituted;
+            }
+        }
+        std::fprintf(stderr,
+            "[sp-engine] gemma4 per-layer geometry: %d/%d layers use V=Kcur "
+            "(no own wv)\n",
+            n_v_substituted, n_layer);
+    }
+
     return true;
 }
 

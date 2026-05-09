@@ -62,6 +62,21 @@ enum class LlamaLayerKind : int {
 struct LlamaLayer {
     LlamaLayerKind kind = LlamaLayerKind::STANDARD;
 
+    // Gemma4 V-sharing: true if this layer's GGUF lacks attn_v.weight.
+    // Per the reference Gemma4 attention, such layers use the K projection
+    // result (Kcur) as V — they do NOT borrow wv from a neighbor. The
+    // forward pass also uses this flag to select sliding-window masking.
+    bool gemma4_v_shared = false;
+
+    // Gemma4 per-layer geometry. Gemma4's local/global layer split has
+    // DIFFERENT head_dim and n_head_kv per layer (e.g., 31B: locals are
+    // head_dim=256/n_head_kv=16, globals are head_dim=512/n_head_kv=4).
+    // These fields override the model-wide hparams when non-zero.
+    // n_rot for Gemma4 always equals head_dim (no kv_fold trick).
+    int gemma4_head_dim   = 0;   // per-layer head_dim (0 = use model default)
+    int gemma4_n_head_kv  = 0;   // per-layer n_head_kv (0 = use model default)
+    int gemma4_n_rot      = 0;   // per-layer n_rot (0 = use model default)
+
     // --- Attention (STANDARD / MOE_ATTN layers) -------------------------
     ggml_tensor* attn_norm   = nullptr;  // "blk.N.attn_norm.weight"
     ggml_tensor* wq          = nullptr;

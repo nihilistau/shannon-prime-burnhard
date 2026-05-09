@@ -124,6 +124,11 @@ struct ForwardContext::Impl {
     // Non-null when curriculum is active and prefetch is enabled.
     sp_prefetch_engine_t* prefetch = nullptr;         // heap-allocated, owned
 
+    // Gemma4 per-layer head_dim. Empty for uniform-head_dim models.
+    // When populated, per_layer_hd[L] gives the actual Q/K head dim
+    // for layer L (local=256, global=512 for E2B).
+    std::vector<int> per_layer_hd;
+
     // Stage 5b: stateful session over a bound (non-owning) KvCache.
     KvCache* cache  = nullptr;
     int      kv_pos = 0;
@@ -406,26 +411,38 @@ std::unique_ptr<ForwardContext> ForwardContext::create(const Model& model,
     // block; other archs leave embeddings untouched.
     {
         const std::string& a = model.architecture();
-        if (a == "gemma" || a == "gemma2" || a == "gemma3") {
+        if (a == "gemma" || a == "gemma2" || a == "gemma3" || a == "gemma4") {
             fc->impl_->embd_scale = sqrtf((float)fc->impl_->n_embd);
         }
     }
 
-    // Gemma3 sliding-window attention. Reads the `sliding_window`
+    // Gemma3/4 sliding-window attention. Reads the `sliding_window`
     // hparam — 1024 on gemma3-12B, 512 on smaller variants. Non-
-    // gemma3 archs leave swa_window=0 (SWA off).
+    // gemma archs leave swa_window=0 (SWA off).
+    // Gemma4 uses the same key pattern under "gemma4." namespace.
     if (model.architecture() == "gemma3") {
         const int64_t w = model.get_i64("gemma3.attention.sliding_window", 0);
         if (w > 0) fc->impl_->swa_window = (int)w;
         fc->impl_->attn_logit_softcapping = (float)model.get_f64("gemma3.attention.logit_softcapping", 0.0);
         fc->impl_->final_logit_softcapping = (float)model.get_f64("gemma3.final_logit_softcapping", 0.0);
     }
+    if (model.architecture() == "gemma4") {
+        const int64_t w = model.get_i64("gemma4.attention.sliding_window",
+                                         model.get_i64("gemma3.attention.sliding_window", 0));
+        if (w > 0) fc->impl_->swa_window = (int)w;
+        fc->impl_->attn_logit_softcapping = (float)model.get_f64(
+            "gemma4.attention.logit_softcapping",
+            model.get_f64("gemma3.attention.logit_softcapping", 0.0));
+        fc->impl_->final_logit_softcapping = (float)model.get_f64(
+            "gemma4.final_logit_softcapping",
+            model.get_f64("gemma3.final_logit_softcapping", 0.0));
+    }
 
     // FFN activation flavor. Gemma family uses GELU (tanh approx)
     // instead of SiLU in the gated MLP.
     {
         const std::string& a = model.architecture();
-        fc->impl_->ffn_gelu = (a == "gemma" || a == "gemma2" || a == "gemma3");
+        fc->impl_->ffn_gelu = (a == "gemma" || a == "gemma2" || a == "gemma3" || a == "gemma4");
     }
 
     // Hybrid GDN arch setup (qwen35moe + qwen35). These stay zero/default
@@ -1091,13 +1108,21 @@ static ggml_tensor* build_block(ggml_context* gctx,
                                  // quantize → dual-stream GPU matmul →
                                  // Garner reconstruction transparently.
                                  sp_crt_dispatch_t* crt = nullptr) {
+    // Gemma4 per-layer geometry override. Locals/globals have different
+    // head_dim and n_head_kv; use the per-layer values stored on L when
+    // populated. n_rot for Gemma4 always equals head_dim (no kv_fold).
+    if (L.gemma4_head_dim > 0) {
+        head_dim   = L.gemma4_head_dim;
+        n_head_kv  = L.gemma4_n_head_kv;
+        n_rot      = L.gemma4_n_rot;
+    }
     const int n_embd_q = n_head * head_dim;
 
     // Attention pre-norm + projections.
     ggml_tensor* xa = ggml_rms_norm(gctx, x, rms_eps);
     xa = ggml_mul(gctx, xa, L.attn_norm);
 
-    // QKV projection. Two paths:
+    // QKV projection. Three paths:
     //   * Classic (llama / qwen / mistral / gemma / granite): three separate
     //     matmuls against Wq / Wk / Wv plus optional biases.
     //   * Phi3 fused: one matmul against attn_qkv produces a packed
@@ -1105,6 +1130,8 @@ static ggml_tensor* build_block(ggml_context* gctx,
     //     fused-row stride; each subset view has nb[0]=elem_size and the
     //     same row stride, so the views are non-contiguous and must be
     //     materialised via ggml_cont before reshape_3d.
+    //   * Gemma4 V-substitution: when L.wv is null, V is the K projection
+    //     itself (Vcur = Kcur). Different normalisation paths apply later.
     ggml_tensor* Q;
     ggml_tensor* K;
     ggml_tensor* V;
@@ -1123,13 +1150,34 @@ static ggml_tensor* build_block(ggml_context* gctx,
         if (L.bq) Q = ggml_add(gctx, Q, L.bq);
         K = sp_crt_mul_mat(gctx, L.wk, xa, crt);
         if (L.bk) K = ggml_add(gctx, K, L.bk);
-        V = sp_crt_mul_mat(gctx, L.wv, xa, crt);
-        if (L.bv) V = ggml_add(gctx, V, L.bv);
+        if (L.wv) {
+            V = sp_crt_mul_mat(gctx, L.wv, xa, crt);
+            if (L.bv) V = ggml_add(gctx, V, L.bv);
+        } else {
+            // Gemma4 V-substitution: layers without wv use the K projection
+            // result as V. Run a second independent K-matmul so V owns its
+            // own buffer — avoids the gallocr releasing the shared K output
+            // once K is reshaped/normed/rope'd downstream.
+            V = sp_crt_mul_mat(gctx, L.wk, xa, crt);
+            if (L.bk) V = ggml_add(gctx, V, L.bk);
+        }
     }
 
-    Q = ggml_reshape_3d(gctx, Q, head_dim, n_head,    n);
-    K = ggml_reshape_3d(gctx, K, head_dim, n_head_kv, n);
-    V = ggml_reshape_3d(gctx, V, head_dim, n_head_kv, n);
+    // Reshape Q/K/V into [head_dim, heads, n]. Gemma4 uses per-layer dims
+    // (no kv_fold). For other archs with n_rot > head_dim (legacy KV fold
+    // for compatibility), K is reshaped pre-fold for RoPE.
+    const bool gemma4_path = (L.gemma4_head_dim > 0);
+    const bool kv_fold     = !gemma4_path && (n_rot > head_dim && head_dim > 0);
+    if (kv_fold) {
+        const int base_kv_heads = (n_head_kv * head_dim) / n_rot;
+        Q = ggml_reshape_3d(gctx, Q, head_dim, n_head,        n);
+        K = ggml_reshape_3d(gctx, K, n_rot,    base_kv_heads, n);
+        V = ggml_reshape_3d(gctx, V, head_dim, n_head_kv,     n);
+    } else {
+        Q = ggml_reshape_3d(gctx, Q, head_dim, n_head,    n);
+        K = ggml_reshape_3d(gctx, K, head_dim, n_head_kv, n);
+        V = ggml_reshape_3d(gctx, V, head_dim, n_head_kv, n);
+    }
 
     if (L.attn_q_norm) {
         Q = ggml_rms_norm(gctx, Q, rms_eps);
@@ -1139,11 +1187,23 @@ static ggml_tensor* build_block(ggml_context* gctx,
         K = ggml_rms_norm(gctx, K, rms_eps);
         K = ggml_mul(gctx, K, L.attn_k_norm);
     }
+    // Gemma4 V-norm: RMSNorm without learnable scale, applied per-head.
+    // Reference (gemma4_iswa): Vcur = ggml_rms_norm(Vcur, f_norm_rms_eps).
+    if (gemma4_path) {
+        V = ggml_rms_norm(gctx, V, rms_eps);
+    }
 
+    const int q_n_rot = kv_fold ? head_dim : n_rot;
     Q = ggml_rope_ext(gctx, Q, pos, freq_factors,
-                      n_rot, rope_mode, 0, freq_base, freq_scale, 0, 1, 32, 1);
+                      q_n_rot, rope_mode, 0, freq_base, freq_scale, 0, 1, 32, 1);
     K = ggml_rope_ext(gctx, K, pos, freq_factors,
                       n_rot, rope_mode, 0, freq_base, freq_scale, 0, 1, 32, 1);
+
+    // Complete the KV fold: reshape K from pre-fold [n_rot, base, n]
+    // to effective [head_dim, n_head_kv, n] after RoPE application.
+    if (kv_fold) {
+        K = ggml_reshape_3d(gctx, K, head_dim, n_head_kv, n);
+    }
 
     // V is a ggml_reshape_3d view over the projection output. ggml_set_output
     // on a view does not preserve the underlying buffer through subsequent
@@ -1189,7 +1249,8 @@ static ggml_tensor* build_block(ggml_context* gctx,
 
     x = ggml_add(gctx, x, y1);
 
-    // FFN. Two paths:
+    // FFN. Three paths:
+    //   * Skip: gemma4 layers that lack FFN tensors (pass-through).
     //   * Classic (llama / qwen / gemma / ...): separate ffn_gate and ffn_up
     //     matmuls, SiLU/GELU on gate, elementwise mul, then ffn_down.
     //   * Phi3 packed SwiGLU: the GGUF's ffn_up tensor is 2*n_ff wide and
@@ -1197,6 +1258,10 @@ static ggml_tensor* build_block(ggml_context* gctx,
     //     a view-split (mirroring the fused-QKV pattern above) reconstructs
     //     gate and up. phi3 never has ffn_gate bound, so that signals the
     //     packed layout.
+    if (!L.ffn_norm || !L.ffn_down) {
+        // No FFN on this layer (gemma4 edge case) — skip.
+        return x;
+    }
     ggml_tensor* xb = ggml_rms_norm(gctx, x, rms_eps);
     xb = ggml_mul(gctx, xb, L.ffn_norm);
 
@@ -1756,7 +1821,13 @@ bool ForwardContext::forward_one_block(const std::vector<int32_t>& token_ids,
     std::vector<int32_t> positions(n);
     for (int i = 0; i < n; ++i) positions[i] = i;
     ggml_backend_tensor_set(pos, positions.data(), 0, (size_t)n * sizeof(int32_t));
-    if (freq_factors) {
+    if (freq_factors &&
+        (freq_factors->buffer ||
+         (freq_factors->view_src && freq_factors->view_src->buffer))) {
+        // Guard mirrors the `pos` check above: if every layer bypasses
+        // freq_factors (e.g. Gemma4 per-layer n_rot != model n_rot, or the
+        // arch routes positions through mRoPE), gallocr drops freq_factors
+        // and its buffer stays null — set would assert.
         ggml_backend_tensor_set(freq_factors, impl_->freq_factors_vec.data(), 0,
                                 impl_->freq_factors_vec.size() * sizeof(float));
     }
@@ -1929,8 +2000,16 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
         // MOE_* variants are qwen35moe-specific.
         switch (L.kind) {
         case LlamaLayerKind::STANDARD: {
-            // Per-layer SWA dispatch: local gemma3 layers swap mask + rope base.
-            const bool local = sp_is_gemma3_swa_layer(i, impl_->swa_window);
+            // Per-layer SWA dispatch.
+            // Gemma3: hardcoded 5-local : 1-global pattern (every 6th is global).
+            // Gemma4: V-shared layers (no own wv) are GLOBAL full-attention;
+            //   the remaining layers do sliding-window local attention.
+            bool local;
+            if (L.gemma4_head_dim > 0) {  // Gemma4 marker
+                local = (impl_->swa_window > 0) && !L.gemma4_v_shared;
+            } else {
+                local = sp_is_gemma3_swa_layer(i, impl_->swa_window);
+            }
             ggml_tensor* layer_mask = local ? kq_mask_swa : kq_mask;
             const float layer_freq_base = local ? impl_->swa_rope_freq_base
                                                  : impl_->rope_freq_base;
@@ -2098,7 +2177,13 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
         ggml_backend_tensor_set(pos_mrope, positions_mrope.data(), 0,
                                 positions_mrope.size() * sizeof(int32_t));
     }
-    if (freq_factors) {
+    if (freq_factors &&
+        (freq_factors->buffer ||
+         (freq_factors->view_src && freq_factors->view_src->buffer))) {
+        // Guard mirrors the `pos` check above: if every layer bypasses
+        // freq_factors (e.g. Gemma4 per-layer n_rot != model n_rot, or the
+        // arch routes positions through mRoPE), gallocr drops freq_factors
+        // and its buffer stays null — set would assert.
         ggml_backend_tensor_set(freq_factors, impl_->freq_factors_vec.data(), 0,
                                 impl_->freq_factors_vec.size() * sizeof(float));
     }
@@ -2152,7 +2237,13 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
                 mask[(size_t)q * n + kv] = v;
             }
         }
-        ggml_backend_tensor_set(kq_mask, mask.data(), 0, mask.size() * sizeof(float));
+        // Same buffer guard pattern as `pos` and `freq_factors` — if every
+        // layer routes through kq_mask_swa (Gemma3/4 with no global layer
+        // in this graph slice), gallocr drops kq_mask.
+        if (kq_mask->buffer ||
+            (kq_mask->view_src && kq_mask->view_src->buffer)) {
+            ggml_backend_tensor_set(kq_mask, mask.data(), 0, mask.size() * sizeof(float));
+        }
 
         // Gemma3 SWA mask — identical to the causal mask above but with
         // the additional constraint that (q - kv) < swa_window. Keys
@@ -2188,21 +2279,25 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
     // null from the dispatch loop) — leave the corresponding per_layer
     // slots empty so the caller can skip them cleanly.
     if (capture) {
-        const size_t kv_elems = (size_t)n * impl_->n_head_kv * impl_->head_dim;
+        // Per-layer geometry: Gemma4 has different head_dim/n_head_kv per
+        // layer (locals vs globals). Read the actual element count from
+        // each capture tensor instead of assuming model-wide constants.
         for (int i = 0; i < impl_->n_layer; ++i) {
             if (!cap_K[(size_t)i] || !cap_V[(size_t)i]) {
                 (*per_layer_K)[(size_t)i].clear();
                 (*per_layer_V)[(size_t)i].clear();
                 continue;
             }
-            (*per_layer_K)[(size_t)i].resize(kv_elems);
-            (*per_layer_V)[(size_t)i].resize(kv_elems);
+            const size_t k_elems = (size_t)ggml_nelements(cap_K[(size_t)i]);
+            const size_t v_elems = (size_t)ggml_nelements(cap_V[(size_t)i]);
+            (*per_layer_K)[(size_t)i].resize(k_elems);
+            (*per_layer_V)[(size_t)i].resize(v_elems);
             ggml_backend_tensor_get(cap_K[(size_t)i],
                                     (*per_layer_K)[(size_t)i].data(),
-                                    0, kv_elems * sizeof(float));
+                                    0, k_elems * sizeof(float));
             ggml_backend_tensor_get(cap_V[(size_t)i],
                                     (*per_layer_V)[(size_t)i].data(),
-                                    0, kv_elems * sizeof(float));
+                                    0, v_elems * sizeof(float));
         }
     }
 
@@ -2333,19 +2428,26 @@ static ggml_tensor* build_block_decode(ggml_context* gctx,
                                         float freq_scale,
                                         float rms_eps,
                                         int   rope_mode,
+                                        bool  ffn_gelu,
                                         float attn_logit_softcap,
                                         ggml_tensor** k_capture,
                                         ggml_tensor** v_capture,
                                         sp_crt_dispatch_t* crt = nullptr) {
+    // Gemma4 per-layer geometry override — same logic as build_block.
+    if (L.gemma4_head_dim > 0) {
+        head_dim   = L.gemma4_head_dim;
+        n_head_kv  = L.gemma4_n_head_kv;
+        n_rot      = L.gemma4_n_rot;
+    }
     const int n_embd_q = n_head * head_dim;
     const int n        = 1;
 
     ggml_tensor* xa = ggml_rms_norm(gctx, x, rms_eps);
     xa = ggml_mul(gctx, xa, L.attn_norm);
 
-    // QKV projection. Classic (separate Wq/Wk/Wv) or phi3 fused (one
-    // matmul + view-split). See build_block for detail on the fused
-    // layout and why each subset view needs a ggml_cont before reshape.
+    // QKV projection. Classic (separate Wq/Wk/Wv), phi3 fused (one
+    // matmul + view-split), or Gemma4 V=Kcur substitution when wv is null.
+    // See build_block for detail on the fused layout.
     ggml_tensor* Q;
     ggml_tensor* K;
     ggml_tensor* V;
@@ -2364,13 +2466,29 @@ static ggml_tensor* build_block_decode(ggml_context* gctx,
         if (L.bq) Q = ggml_add(gctx, Q, L.bq);
         K = sp_crt_mul_mat(gctx, L.wk, xa, crt);
         if (L.bk) K = ggml_add(gctx, K, L.bk);
-        V = sp_crt_mul_mat(gctx, L.wv, xa, crt);
-        if (L.bv) V = ggml_add(gctx, V, L.bv);
+        if (L.wv) {
+            V = sp_crt_mul_mat(gctx, L.wv, xa, crt);
+            if (L.bv) V = ggml_add(gctx, V, L.bv);
+        } else {
+            // Gemma4 V-substitution via independent K-matmul — see build_block.
+            V = sp_crt_mul_mat(gctx, L.wk, xa, crt);
+            if (L.bk) V = ggml_add(gctx, V, L.bk);
+        }
     }
 
-    Q = ggml_reshape_3d(gctx, Q, head_dim, n_head,    n);
-    K = ggml_reshape_3d(gctx, K, head_dim, n_head_kv, n);
-    V = ggml_reshape_3d(gctx, V, head_dim, n_head_kv, n);
+    // Reshape Q/K/V — Gemma4 path uses per-layer dims and skips kv_fold.
+    const bool gemma4_path = (L.gemma4_head_dim > 0);
+    const bool kv_fold     = !gemma4_path && (n_rot > head_dim && head_dim > 0);
+    if (kv_fold) {
+        const int base_kv_heads = (n_head_kv * head_dim) / n_rot;
+        Q = ggml_reshape_3d(gctx, Q, head_dim, n_head,        n);
+        K = ggml_reshape_3d(gctx, K, n_rot,    base_kv_heads, n);
+        V = ggml_reshape_3d(gctx, V, head_dim, n_head_kv,     n);
+    } else {
+        Q = ggml_reshape_3d(gctx, Q, head_dim, n_head,    n);
+        K = ggml_reshape_3d(gctx, K, head_dim, n_head_kv, n);
+        V = ggml_reshape_3d(gctx, V, head_dim, n_head_kv, n);
+    }
 
     if (L.attn_q_norm) {
         Q = ggml_rms_norm(gctx, Q, rms_eps);
@@ -2380,11 +2498,19 @@ static ggml_tensor* build_block_decode(ggml_context* gctx,
         K = ggml_rms_norm(gctx, K, rms_eps);
         K = ggml_mul(gctx, K, L.attn_k_norm);
     }
+    if (gemma4_path) {
+        V = ggml_rms_norm(gctx, V, rms_eps);
+    }
 
+    const int q_n_rot = kv_fold ? head_dim : n_rot;
     Q = ggml_rope_ext(gctx, Q, pos, freq_factors,
-                      n_rot, rope_mode, 0, freq_base, freq_scale, 0, 1, 32, 1);
+                      q_n_rot, rope_mode, 0, freq_base, freq_scale, 0, 1, 32, 1);
     K = ggml_rope_ext(gctx, K, pos, freq_factors,
                       n_rot, rope_mode, 0, freq_base, freq_scale, 0, 1, 32, 1);
+
+    if (kv_fold) {
+        K = ggml_reshape_3d(gctx, K, head_dim, n_head_kv, n);
+    }
 
     // V at this point is a ggml_reshape_3d view over the projection
     // output. Materialise it once via ggml_cont and reuse for both the
@@ -2445,6 +2571,9 @@ static ggml_tensor* build_block_decode(ggml_context* gctx,
 
     x = ggml_add(gctx, x, y1);
 
+    // FFN skip guard for gemma4 layers without FFN tensors.
+    if (!L.ffn_norm || !L.ffn_down) return x;
+
     ggml_tensor* xb = ggml_rms_norm(gctx, x, rms_eps);
     xb = ggml_mul(gctx, xb, L.ffn_norm);
     // FFN dispatch — same logic as build_block:
@@ -2465,7 +2594,7 @@ static ggml_tensor* build_block_decode(ggml_context* gctx,
         gate = ggml_cont(gctx, ggml_view_2d(gctx, gu, n_ff, n_tok, row_stride, 0));
         up   = ggml_cont(gctx, ggml_view_2d(gctx, gu, n_ff, n_tok, row_stride, gate_bytes));
     }
-    gate = ggml_silu(gctx, gate);
+    gate = ffn_gelu ? ggml_gelu(gctx, gate) : ggml_silu(gctx, gate);
     ggml_tensor* ffn  = ggml_mul(gctx, gate, up);
     ffn  = sp_crt_mul_mat(gctx, L.ffn_down, ffn, crt);
 
@@ -2686,8 +2815,15 @@ bool ForwardContext::decode(int32_t token_id,
     for (int L = 0; L < impl_->n_layer; ++L) {
         ggml_tensor* k_cap = nullptr;
         ggml_tensor* v_cap = nullptr;
-        // Per-layer SWA dispatch: local gemma3 layers swap mask + rope base.
-        const bool local = sp_is_gemma3_swa_layer(L, impl_->swa_window);
+        // Per-layer SWA dispatch.
+        // Gemma4: V-shared = full-attention global; rest do sliding-window.
+        const auto& layer = W->layers()[(size_t)L];
+        bool local;
+        if (layer.gemma4_head_dim > 0) {
+            local = (impl_->swa_window > 0) && !layer.gemma4_v_shared;
+        } else {
+            local = sp_is_gemma3_swa_layer(L, impl_->swa_window);
+        }
         ggml_tensor* layer_mask = local ? mask_swa : mask;
         const float layer_freq_base = local ? impl_->swa_rope_freq_base
                                              : impl_->rope_freq_base;
@@ -2699,7 +2835,8 @@ bool ForwardContext::decode(int32_t token_id,
                                past_n, hd, impl_->n_head, n_kv,
                                impl_->n_rot,
                                layer_freq_base, impl_->rope_freq_scale,
-                               impl_->rms_norm_eps, impl_->rope_mode, impl_->attn_logit_softcapping,
+                               impl_->rms_norm_eps, impl_->rope_mode,
+                               impl_->ffn_gelu, impl_->attn_logit_softcapping,
                                &k_cap, &v_cap,
                                impl_->crt_dispatch);
         // Copy this layer's capture into its slice of the batched
@@ -2769,7 +2906,13 @@ bool ForwardContext::decode(int32_t token_id,
     int32_t pos_buf[1] = { past_n };  // new token sits at position past_n
     ggml_backend_tensor_set(ids, id_buf, 0, sizeof(id_buf));
     ggml_backend_tensor_set(pos, pos_buf, 0, sizeof(pos_buf));
-    if (freq_factors) {
+    if (freq_factors &&
+        (freq_factors->buffer ||
+         (freq_factors->view_src && freq_factors->view_src->buffer))) {
+        // Guard mirrors the `pos` check above: if every layer bypasses
+        // freq_factors (e.g. Gemma4 per-layer n_rot != model n_rot, or the
+        // arch routes positions through mRoPE), gallocr drops freq_factors
+        // and its buffer stays null — set would assert.
         ggml_backend_tensor_set(freq_factors, impl_->freq_factors_vec.data(), 0,
                                 impl_->freq_factors_vec.size() * sizeof(float));
     }
