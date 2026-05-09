@@ -91,6 +91,11 @@ endif()
 if(SP_WITH_CUDA)
     target_compile_definitions(shannon_prime_core PUBLIC SP_WITH_CUDA)
 endif()
+if(SP_TARGET_MOBILE)
+    # Short-circuits sp_probe_hardware() to LONE_WOLF; skip desktop-only
+    # backends (CUDA/Beast/CRT) further down in this file.
+    target_compile_definitions(shannon_prime_core PUBLIC SP_TARGET_MOBILE=1)
+endif()
 
 if(SP_WITH_VULKAN OR SP_BEAST_VULKAN)
     find_package(Vulkan QUIET)
