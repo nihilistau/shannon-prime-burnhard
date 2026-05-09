@@ -260,6 +260,27 @@ static int load_expert(const char *gguf_path, int layer, int expert_idx,
     DBG("up dequant done");
     t_down->to_float(down_buf, down_f, (int64_t)down_elems_per_expert);
     DBG("down dequant done");
+
+    // Weight statistics — sanity-check the dequant produced plausible
+    // values. If gate/up/down are all-zero or all-the-same, the layout
+    // / offset / type assumptions are wrong, not the residue math.
+    {
+        double sum = 0, sumsq = 0;
+        float wmin = gate_f[0], wmax = gate_f[0];
+        for (size_t i = 0; i < gate_elems_per_expert; ++i) {
+            float v = gate_f[i];
+            sum += v; sumsq += (double)v * v;
+            if (v < wmin) wmin = v;
+            if (v > wmax) wmax = v;
+        }
+        double mean = sum / (double)gate_elems_per_expert;
+        double var  = sumsq / (double)gate_elems_per_expert - mean * mean;
+        DBG("gate stats: n=%zu  min=%+.6e max=%+.6e mean=%+.6e std=%.6e",
+            gate_elems_per_expert, wmin, wmax, mean, sqrt(var));
+        DBG("gate first 8: %+.4e %+.4e %+.4e %+.4e  %+.4e %+.4e %+.4e %+.4e",
+            gate_f[0], gate_f[1], gate_f[2], gate_f[3],
+            gate_f[4], gate_f[5], gate_f[6], gate_f[7]);
+    }
     free(gate_buf); free(up_buf); free(down_buf);
 
     *out_gate = gate_f;
@@ -323,6 +344,30 @@ int main(int argc, char **argv) {
 
     float *out_stock   = (float *)malloc(n_embd * sizeof(float));
     float *out_residue = (float *)malloc(n_embd * sizeof(float));
+
+    // Diagnostic: isolate the first matmul (gate @ x) — if THIS already
+    // diverges between paths on real weights, the bug is in the matmul
+    // applied to real-weight distributions, not in SiLU / multiply / down.
+    {
+        float *go_stock   = (float *)malloc(n_ff * sizeof(float));
+        float *go_residue = (float *)malloc(n_ff * sizeof(float));
+        sp_reference_matmul_fp32(gate, x, go_stock,   n_ff, n_embd, 1);
+        sp_burnhard_residue_matmul_fp32(gate, x, go_residue, n_ff, n_embd, 1);
+        double max_d = 0.0, peak_g = 0.0;
+        for (size_t i = 0; i < n_ff; ++i) {
+            double d = fabs((double)go_stock[i] - (double)go_residue[i]);
+            if (d > max_d) max_d = d;
+            if (fabs((double)go_stock[i]) > peak_g) peak_g = fabs((double)go_stock[i]);
+        }
+        DBG("gate@x ALONE: peak_stock=%+.4e max_diff=%.4e  "
+            "first 4 stock=%+.4e %+.4e %+.4e %+.4e",
+            peak_g, max_d,
+            go_stock[0], go_stock[1], go_stock[2], go_stock[3]);
+        DBG("gate@x ALONE:                                "
+            "first 4 resid=%+.4e %+.4e %+.4e %+.4e",
+            go_residue[0], go_residue[1], go_residue[2], go_residue[3]);
+        free(go_stock); free(go_residue);
+    }
 
     struct timespec t0, t1, t2;
     timespec_get(&t0, TIME_UTC);
