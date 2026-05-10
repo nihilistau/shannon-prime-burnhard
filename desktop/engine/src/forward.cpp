@@ -1004,10 +1004,14 @@ static ggml_tensor* build_moe_ffn(ggml_context* gctx,
     if (run_furnace) {
         // Furnace path: one custom op replaces the entire routed-expert
         // FFN (gate, up, down, silu, mul, weighted sum). Output shape is
-        // [n_embd, n_tokens] — matches the stock moe_out.
+        // [n_embd, n_tokens] — matches the stock moe_out. When `crt` is
+        // bound and gpu_ready, the residue matmul inside dispatches to
+        // CUDA M1 chamber on RTX + Vulkan/L0 M2 chamber on UHD; otherwise
+        // falls back to the bit-exact host residue path.
         moe_out_furnace = sp_build_burn_moe_op(gctx, cur, selected, weights,
                                                   L.ffn_gate_exps, L.ffn_up_exps,
-                                                  L.ffn_down_exps, n_expert_used);
+                                                  L.ffn_down_exps, n_expert_used,
+                                                  crt);
     }
 
     if (furnace_dispatch == 2) {

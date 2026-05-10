@@ -25,6 +25,7 @@
 #define SP_BURN_MOE_OP_H
 
 #include "ggml.h"
+#include "sp_crt_dispatch.h"   // sp_crt_dispatch_t — pulled in for the public API
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,7 +41,8 @@ struct ggml_tensor *sp_build_burn_moe_op(struct ggml_context *gctx,
                                           struct ggml_tensor *gate_exps,  // [n_embd, n_ff, n_expert]
                                           struct ggml_tensor *up_exps,    // [n_embd, n_ff, n_expert]
                                           struct ggml_tensor *down_exps,  // [n_ff, n_embd, n_expert]
-                                          int n_expert_used);
+                                          int n_expert_used,
+                                          sp_crt_dispatch_t *crt);   // optional, NULL=host fallback
 
 #ifdef __cplusplus
 }

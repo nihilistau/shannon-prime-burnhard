@@ -18,6 +18,11 @@
 #include "burnhard_residue_matmul.h"
 #include "burnhard_crt.h"
 
+extern "C" {
+#include "sp_crt.h"
+#include "sp_crt_dispatch.h"
+}
+
 #include "ggml.h"
 #include "ggml-backend.h"
 
@@ -83,24 +88,44 @@ static int dequant_expert_slice(const ggml_tensor *tensor, int expert_idx,
 //   par      = silu(gate_out) * up_out
 //   contrib  = down_W @ par        (residue matmul)
 // Returns contrib in `out_fp32` (caller allocated, n_embd elements).
+//
+// When crt && crt->crt.gpu_ready, the three matmuls dispatch via
+// sp_crt_matmul_gpu — CUDA M1 chamber on RTX, Vulkan/L0 M2 chamber on
+// UHD, Garner-joined on host. Otherwise falls back to the bit-exact
+// host residue path verified in Sessions 1-2.5.
 // ----------------------------------------------------------------------------
 static int expert_ffn_one_token(const float *x, size_t n_embd, size_t n_ff,
                                   const float *gate_W, const float *up_W,
                                   const float *down_W,
-                                  float *out_fp32) {
+                                  float *out_fp32,
+                                  sp_crt_dispatch_t *crt) {
     std::vector<float> gate_out(n_ff);
     std::vector<float> up_out  (n_ff);
     std::vector<float> par     (n_ff);
     int rc = 0;
-    rc |= sp_burnhard_residue_matmul_fp32(gate_W, x, gate_out.data(),
-                                            n_ff, n_embd, 1);
-    rc |= sp_burnhard_residue_matmul_fp32(up_W,   x, up_out.data(),
-                                            n_ff, n_embd, 1);
-    if (rc != 0) return rc;
-    apply_silu_inplace(gate_out.data(), n_ff);
-    for (size_t i = 0; i < n_ff; ++i) par[i] = gate_out[i] * up_out[i];
-    rc |= sp_burnhard_residue_matmul_fp32(down_W, par.data(), out_fp32,
-                                            n_embd, n_ff, 1);
+    if (crt && crt->crt.gpu_ready) {
+        // GPU dual-ring path. Note arg order: sp_crt_matmul_gpu takes
+        // (M, N, K) at the end vs the host helper's (M, K, N).
+        rc |= sp_crt_matmul_gpu(&crt->crt, gate_W, x, gate_out.data(),
+                                  (int)n_ff, /*N=*/1, (int)n_embd);
+        rc |= sp_crt_matmul_gpu(&crt->crt, up_W,   x, up_out.data(),
+                                  (int)n_ff, /*N=*/1, (int)n_embd);
+        if (rc != 0) return rc;
+        apply_silu_inplace(gate_out.data(), n_ff);
+        for (size_t i = 0; i < n_ff; ++i) par[i] = gate_out[i] * up_out[i];
+        rc |= sp_crt_matmul_gpu(&crt->crt, down_W, par.data(), out_fp32,
+                                  (int)n_embd, /*N=*/1, (int)n_ff);
+    } else {
+        rc |= sp_burnhard_residue_matmul_fp32(gate_W, x, gate_out.data(),
+                                                n_ff, n_embd, 1);
+        rc |= sp_burnhard_residue_matmul_fp32(up_W,   x, up_out.data(),
+                                                n_ff, n_embd, 1);
+        if (rc != 0) return rc;
+        apply_silu_inplace(gate_out.data(), n_ff);
+        for (size_t i = 0; i < n_ff; ++i) par[i] = gate_out[i] * up_out[i];
+        rc |= sp_burnhard_residue_matmul_fp32(down_W, par.data(), out_fp32,
+                                                n_embd, n_ff, 1);
+    }
     return rc;
 }
 
@@ -111,6 +136,9 @@ static int expert_ffn_one_token(const float *x, size_t n_embd, size_t n_ff,
 // ----------------------------------------------------------------------------
 struct burn_moe_userdata {
     int n_expert_used;
+    sp_crt_dispatch_t *crt;   // Optional — when non-null AND crt->crt.gpu_ready,
+                              // residue matmul dispatches to GPU dual-ring
+                              // (CUDA M1 + Vulkan/L0 M2). Null = host fallback.
 };
 
 // ----------------------------------------------------------------------------
@@ -277,7 +305,8 @@ static void burn_moe_compute(ggml_tensor *dst, int ith, int nth, void *userdata)
             if (!ce) continue;
             if (expert_ffn_one_token(x, n_embd, n_ff,
                                        ce->gate.data(), ce->up.data(), ce->down.data(),
-                                       contrib.data()) != 0) {
+                                       contrib.data(),
+                                       ud->crt) != 0) {
                 continue;
             }
             for (size_t i = 0; i < n_embd; ++i) y[i] += w * contrib[i];
@@ -299,13 +328,24 @@ extern "C" ggml_tensor *sp_build_burn_moe_op(ggml_context *gctx,
                                               ggml_tensor *gate_exps,
                                               ggml_tensor *up_exps,
                                               ggml_tensor *down_exps,
-                                              int n_expert_used) {
+                                              int n_expert_used,
+                                              sp_crt_dispatch_t *crt) {
     // User data lives in heap memory tied to the graph's lifetime via a
     // simple leak — gctx doesn't track our allocations. The Engine resets
     // its forward graph each call so this leak is bounded to one graph's
     // worth of MoE layers (~40 × ~96 bytes = 4 KB). Not worth a free hook.
     burn_moe_userdata *ud = new burn_moe_userdata;
     ud->n_expert_used = n_expert_used;
+    ud->crt           = crt;
+    if (crt && crt->crt.gpu_ready) {
+        static int logged = 0;
+        if (!logged) {
+            std::fprintf(stderr,
+                "[burn_moe] CRT GPU dispatch ARMED — residue matmul will route "
+                "to dual-ring (M1 CUDA + M2 Vulkan/L0)\n");
+            logged = 1;
+        }
+    }
 
     const int64_t n_embd   = cur->ne[0];
     const int64_t n_tokens = cur->ne[1];
