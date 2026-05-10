@@ -46,6 +46,71 @@ static bool sp_gdn_diag_enabled() {
     return flag;
 }
 
+// Diagnostic / safety switch: when set, the prefill attention block uses
+// the manual ggml_mul_mat + ggml_soft_max_ext + ggml_mul_mat path instead
+// of the fused ggml_flash_attn_ext op. The decode path already uses the
+// manual path unconditionally. This exists because our vendored ggml has
+// the fattn family kept at b8763 (the template-instance .cu files pin the
+// API), while the rest of the CUDA backend was bumped to b8861 — set
+// SP_NO_FLASH_ATTN=1 to bypass the fattn op when the version skew bites.
+static bool sp_no_flash_attn_enabled() {
+    static const bool flag = []{
+        const char* v = std::getenv("SP_NO_FLASH_ATTN");
+        return v != nullptr && v[0] != '\0' && v[0] != '0';
+    }();
+    return flag;
+}
+
+// Manual (non-fused) prefill attention. Mirrors the decode-path layout:
+//   Q [head_dim, n_head,    n] (rope'd, possibly q_norm'd)
+//   K [head_dim, n_head_kv, n] (rope'd, possibly k_norm'd)
+//   V [head_dim, n_head_kv, n] (cont'd)
+//   mask [n, n] f32 (causal mask, same one fed to flash_attn_ext)
+// Returns [head_dim, n_head, n] f32 — same shape as ggml_flash_attn_ext's
+// output, so callers can reshape_2d → wo as if the fused op had run.
+static ggml_tensor* sp_attention_prefill_manual(ggml_context* gctx,
+                                                  ggml_tensor* Q,
+                                                  ggml_tensor* K,
+                                                  ggml_tensor* V,
+                                                  ggml_tensor* mask,
+                                                  float qk_scale,
+                                                  float alibi_max_bias,
+                                                  float logit_softcap) {
+    const int64_t head_dim  = Q->ne[0];
+    const int64_t n_head    = Q->ne[1];
+    const int64_t n         = Q->ne[2];
+    const int64_t n_head_kv = K->ne[1];
+
+    // GQA broadcast: replicate K/V from n_head_kv to n_head heads.
+    if (n_head != n_head_kv) {
+        const int64_t n_rep = n_head / n_head_kv;
+        ggml_tensor* Kx = ggml_reshape_4d(gctx, K, head_dim, 1, n_head_kv, n);
+        ggml_tensor* Kt = ggml_new_tensor_4d(gctx, K->type, head_dim, n_rep, n_head_kv, n);
+        Kx = ggml_repeat(gctx, Kx, Kt);
+        K  = ggml_reshape_3d(gctx, Kx, head_dim, n_head, n);
+        ggml_tensor* Vx = ggml_reshape_4d(gctx, V, head_dim, 1, n_head_kv, n);
+        ggml_tensor* Vt = ggml_new_tensor_4d(gctx, V->type, head_dim, n_rep, n_head_kv, n);
+        Vx = ggml_repeat(gctx, Vx, Vt);
+        V  = ggml_reshape_3d(gctx, Vx, head_dim, n_head, n);
+    }
+
+    ggml_tensor* Qp = ggml_cont(gctx, ggml_permute(gctx, Q, 0, 2, 1, 3));
+    ggml_tensor* Kp = ggml_cont(gctx, ggml_permute(gctx, K, 0, 2, 1, 3));
+    ggml_tensor* KQ = ggml_mul_mat(gctx, Kp, Qp);
+    KQ = ggml_scale(gctx, KQ, qk_scale);
+    if (logit_softcap > 0.0f) {
+        KQ = ggml_scale(gctx, KQ, 1.0f / logit_softcap);
+        KQ = ggml_tanh (gctx, KQ);
+        KQ = ggml_scale(gctx, KQ, logit_softcap);
+    }
+    KQ = ggml_soft_max_ext(gctx, KQ, mask, 1.0f, alibi_max_bias);
+
+    ggml_tensor* Vp = ggml_cont(gctx, ggml_permute(gctx, V, 1, 2, 0, 3));
+    ggml_tensor* attn = ggml_mul_mat(gctx, Vp, KQ);
+    attn = ggml_cont(gctx, ggml_permute(gctx, attn, 0, 2, 1, 3));
+    return attn;   // [head_dim, n_head, n] f32
+}
+
 struct ForwardContext::Impl {
     const LlamaWeights* weights = nullptr;
 
@@ -1302,30 +1367,36 @@ static ggml_tensor* build_block(ggml_context* gctx,
     if (k_capture) *k_capture = K;
     if (v_capture) *v_capture = V;
 
-    // Attention via ggml_flash_attn_ext — fused, numerically stable for
-    // long sequences, handles GQA broadcast internally (no manual repeat
-    // needed). Permute Q/K/V to [head_dim, n, n_head_or_kv]; cast K and
-    // V to F16 (the op's expected operand type for the matmul kernels);
-    // F16 mask is required when max_bias > 0 (and tolerated otherwise).
-    // Output comes back shaped [head_dim, n_head, n] which reshape_2d
-    // flattens to [n_embd_q, n] for the wo projection. Output precision
-    // is set to F32 explicitly.
-    ggml_tensor* qp = ggml_permute(gctx, Q, 0, 2, 1, 3);
-    ggml_tensor* kp = ggml_permute(gctx, K, 0, 2, 1, 3);
-    ggml_tensor* vp = ggml_permute(gctx, V, 0, 2, 1, 3);
-    if (kp->type == GGML_TYPE_F32) kp = ggml_cast(gctx, kp, GGML_TYPE_F16);
-    if (vp->type == GGML_TYPE_F32) vp = ggml_cast(gctx, vp, GGML_TYPE_F16);
-    ggml_tensor* mask_f16 = ggml_cast(gctx, kq_mask, GGML_TYPE_F16);
+    // Attention dispatch — fused (ggml_flash_attn_ext) by default, or the
+    // manual mul_mat + soft_max + mul_mat path when SP_NO_FLASH_ATTN=1
+    // (escape hatch for the CUDA fattn version-skew bug).
     // Gemma4 uses query_pre_attn_scalar (256 default) for the QK^T scale
     // for ALL layers — including globals where head_dim=512. Other archs
     // use the standard 1/sqrt(head_dim).
     const float qk_scale = (gemma4_path && L.gemma4_head_dim > 0)
         ? (1.0f / sqrtf((float)gemma4_qpa_scalar))
         : (1.0f / sqrtf((float)head_dim));
-    ggml_tensor* attn = ggml_flash_attn_ext(gctx, qp, kp, vp, mask_f16,
-                                            qk_scale,
-                                            alibi_max_bias, attn_logit_softcap);
-    ggml_flash_attn_ext_set_prec(attn, GGML_PREC_F32);
+    ggml_tensor* attn = nullptr;
+    if (sp_no_flash_attn_enabled()) {
+        attn = sp_attention_prefill_manual(gctx, Q, K, V, kq_mask,
+                                            qk_scale, alibi_max_bias,
+                                            attn_logit_softcap);
+    } else {
+        // Permute Q/K/V to [head_dim, n, n_head_or_kv]; cast K/V to F16
+        // (the fused op's expected operand type for the matmul kernels);
+        // F16 mask is required when max_bias > 0 (tolerated otherwise).
+        // Output is [head_dim, n_head, n].
+        ggml_tensor* qp = ggml_permute(gctx, Q, 0, 2, 1, 3);
+        ggml_tensor* kp = ggml_permute(gctx, K, 0, 2, 1, 3);
+        ggml_tensor* vp = ggml_permute(gctx, V, 0, 2, 1, 3);
+        if (kp->type == GGML_TYPE_F32) kp = ggml_cast(gctx, kp, GGML_TYPE_F16);
+        if (vp->type == GGML_TYPE_F32) vp = ggml_cast(gctx, vp, GGML_TYPE_F16);
+        ggml_tensor* mask_f16 = ggml_cast(gctx, kq_mask, GGML_TYPE_F16);
+        attn = ggml_flash_attn_ext(gctx, qp, kp, vp, mask_f16,
+                                    qk_scale,
+                                    alibi_max_bias, attn_logit_softcap);
+        ggml_flash_attn_ext_set_prec(attn, GGML_PREC_F32);
+    }
     attn = ggml_reshape_2d(gctx, attn, n_embd_q, n);
 
     ggml_tensor* y1 = sp_crt_mul_mat(gctx, L.wo, attn, crt);
@@ -1519,16 +1590,24 @@ static ggml_tensor* build_block_moe_attn(ggml_context* gctx,
     if (k_capture) *k_capture = K;
     if (v_capture) *v_capture = V;
 
-    ggml_tensor* qp = ggml_permute(gctx, Q, 0, 2, 1, 3);
-    ggml_tensor* kp = ggml_permute(gctx, K, 0, 2, 1, 3);
-    ggml_tensor* vp = ggml_permute(gctx, V, 0, 2, 1, 3);
-    if (kp->type == GGML_TYPE_F32) kp = ggml_cast(gctx, kp, GGML_TYPE_F16);
-    if (vp->type == GGML_TYPE_F32) vp = ggml_cast(gctx, vp, GGML_TYPE_F16);
-    ggml_tensor* mask_f16 = ggml_cast(gctx, kq_mask, GGML_TYPE_F16);
-    ggml_tensor* attn = ggml_flash_attn_ext(gctx, qp, kp, vp, mask_f16,
+    // Attention dispatch — same fused-vs-manual pick as build_block.
+    ggml_tensor* attn = nullptr;
+    if (sp_no_flash_attn_enabled()) {
+        attn = sp_attention_prefill_manual(gctx, Q, K, V, kq_mask,
                                             1.0f / sqrtf((float)head_dim),
                                             0.0f, attn_logit_softcap);
-    ggml_flash_attn_ext_set_prec(attn, GGML_PREC_F32);
+    } else {
+        ggml_tensor* qp = ggml_permute(gctx, Q, 0, 2, 1, 3);
+        ggml_tensor* kp = ggml_permute(gctx, K, 0, 2, 1, 3);
+        ggml_tensor* vp = ggml_permute(gctx, V, 0, 2, 1, 3);
+        if (kp->type == GGML_TYPE_F32) kp = ggml_cast(gctx, kp, GGML_TYPE_F16);
+        if (vp->type == GGML_TYPE_F32) vp = ggml_cast(gctx, vp, GGML_TYPE_F16);
+        ggml_tensor* mask_f16 = ggml_cast(gctx, kq_mask, GGML_TYPE_F16);
+        attn = ggml_flash_attn_ext(gctx, qp, kp, vp, mask_f16,
+                                    1.0f / sqrtf((float)head_dim),
+                                    0.0f, attn_logit_softcap);
+        ggml_flash_attn_ext_set_prec(attn, GGML_PREC_F32);
+    }
     // attn comes back as [head_dim, n_head, n]. If gated Q, apply the
     // sigmoid gate element-wise before the wo projection; otherwise pass
     // through unchanged.
