@@ -13,6 +13,19 @@
 #include <cuda_runtime.h>
 #endif
 
+#ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#else
+#  include <sys/mman.h>
+#  include <sys/stat.h>
+#  include <fcntl.h>
+#  include <unistd.h>
+#endif
+
 #include <cstdio>
 #include <cstring>
 #include <unordered_map>
@@ -20,6 +33,65 @@
 #include <vector>
 
 namespace sp::engine {
+
+// ------------------------------------------------------------------
+// File-backed mmap helper. The previous loader used gguf_init_from_file
+// with no_alloc=false, which on Windows resolves to _aligned_malloc of
+// the entire GGUF (e.g. 21 GB for Qwen3.6-35B-A3B Q4_K_M). That blows
+// the system commit budget under any real RAM pressure. Real llama.cpp
+// mmaps the file so weights are demand-paged by the kernel; we do the
+// same here. The map stays alive as long as any tensor's data pointer
+// references it (i.e. for un-offloaded layers in partial-offload mode).
+// ------------------------------------------------------------------
+struct SpFileMap {
+    void*  base = nullptr;
+    size_t size = 0;
+#ifdef _WIN32
+    HANDLE h_file = INVALID_HANDLE_VALUE;
+    HANDLE h_map  = nullptr;
+#else
+    int    fd     = -1;
+#endif
+
+    ~SpFileMap() { close(); }
+
+    bool open(const char* path) {
+#ifdef _WIN32
+        h_file = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ,
+                             nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h_file == INVALID_HANDLE_VALUE) return false;
+        LARGE_INTEGER fsz;
+        if (!GetFileSizeEx(h_file, &fsz)) { close(); return false; }
+        size = (size_t)fsz.QuadPart;
+        h_map = CreateFileMappingA(h_file, nullptr, PAGE_READONLY, 0, 0, nullptr);
+        if (!h_map) { close(); return false; }
+        base = MapViewOfFile(h_map, FILE_MAP_READ, 0, 0, 0);
+        if (!base) { close(); return false; }
+        return true;
+#else
+        fd = ::open(path, O_RDONLY);
+        if (fd < 0) return false;
+        struct stat st;
+        if (fstat(fd, &st) != 0) { close(); return false; }
+        size = (size_t)st.st_size;
+        base = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+        if (base == MAP_FAILED) { base = nullptr; close(); return false; }
+        return true;
+#endif
+    }
+
+    void close() {
+#ifdef _WIN32
+        if (base) { UnmapViewOfFile(base); base = nullptr; }
+        if (h_map) { CloseHandle(h_map); h_map = nullptr; }
+        if (h_file != INVALID_HANDLE_VALUE) { CloseHandle(h_file); h_file = INVALID_HANDLE_VALUE; }
+#else
+        if (base) { munmap(base, size); base = nullptr; }
+        if (fd >= 0) { ::close(fd); fd = -1; }
+#endif
+        size = 0;
+    }
+};
 
 struct LlamaWeights::Impl {
     ggml_context* ctx = nullptr;
@@ -39,6 +111,12 @@ struct LlamaWeights::Impl {
     std::vector<ggml_context*>        gpu_ctxs;      // per-GPU tensor contexts [0..n_gpus-1]
     std::vector<ggml_backend_buffer*> gpu_bufs;      // per-GPU backend buffers [0..n_gpus-1]
 
+    // File-backed mmap of the GGUF. Held for the lifetime of the
+    // LlamaWeights when any un-offloaded tensor's data pointer aliases
+    // into it (CPU-mmap path, partial-offload path). For full-offload
+    // we drop it after the backend copies finish.
+    SpFileMap mmap_file;
+
     ~Impl() {
         // Multi-GPU cleanup (reverse order).
         for (int i = (int)gpu_bufs.size() - 1; i >= 0; --i) {
@@ -52,6 +130,7 @@ struct LlamaWeights::Impl {
         if (ctx)         ggml_free(ctx);
         if (meta_ctx)    ggml_free(meta_ctx);
         if (gguf)        gguf_free(gguf);
+        // mmap_file released by its own destructor.
     }
 };
 
@@ -348,8 +427,19 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_cpu_mmap_(const Model& model) {
     auto w = std::unique_ptr<LlamaWeights>(new LlamaWeights());
     w->arch_ = model.architecture();
 
+    // Map the GGUF file ourselves (no heap copy) and parse with
+    // no_alloc=true so ggml only allocates tensor descriptors. We then
+    // patch each descriptor's data pointer to alias into the mmap.
+    if (!w->impl_->mmap_file.open(model.path().c_str())) {
+        std::fprintf(stderr,
+            "[sp-engine] LlamaWeights: mmap of %s failed (cpu path)\n",
+            model.path().c_str());
+        return nullptr;
+    }
+    const uint8_t* mmap_base = (const uint8_t*)w->impl_->mmap_file.base;
+
     gguf_init_params params = {};
-    params.no_alloc = false;
+    params.no_alloc = true;
     params.ctx      = &w->impl_->meta_ctx;
     w->impl_->gguf = gguf_init_from_file(model.path().c_str(), params);
     if (!w->impl_->gguf) {
@@ -357,6 +447,14 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_cpu_mmap_(const Model& model) {
             "[sp-engine] LlamaWeights: failed to reopen %s (mmap)\n",
             model.path().c_str());
         return nullptr;
+    }
+    const size_t data_off = gguf_get_data_offset(w->impl_->gguf);
+    const int64_t n_gguf_tensors = gguf_get_n_tensors(w->impl_->gguf);
+    for (int64_t i = 0; i < n_gguf_tensors; ++i) {
+        const char* name = gguf_get_tensor_name(w->impl_->gguf, i);
+        ggml_tensor* t = ggml_get_tensor(w->impl_->meta_ctx, name);
+        if (!t) continue;
+        t->data = (void*)(mmap_base + data_off + gguf_get_tensor_offset(w->impl_->gguf, i));
     }
 
     if (!LlamaWeights::bind_tensors_(*w, w->impl_->meta_ctx, model)) {
@@ -425,10 +523,21 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
     dump_vram("load_backend_offload_: enter");
 #endif
 
-    // Pass 1: mmap copy.
+    // Pass 1: mmap the GGUF file, then parse with no_alloc=true so ggml
+    // only allocates tensor descriptors (no data copy). Tensor data
+    // pointers are computed as mmap_base + data_offset + tensor_offset.
+    // This avoids a 21 GB heap commit for the 35B Q4_K_M case.
+    if (!w->impl_->mmap_file.open(model.path().c_str())) {
+        std::fprintf(stderr,
+            "[sp-engine] LlamaWeights: mmap of %s failed (pass 1)\n",
+            model.path().c_str());
+        return nullptr;
+    }
+    const uint8_t* mmap_base = (const uint8_t*)w->impl_->mmap_file.base;
+
     ggml_context* mmap_ctx = nullptr;
     gguf_init_params p1 = {};
-    p1.no_alloc = false;
+    p1.no_alloc = true;          // descriptors only; data via our mmap
     p1.ctx      = &mmap_ctx;
     gguf_context* mmap_gguf = gguf_init_from_file(model.path().c_str(), p1);
     if (!mmap_gguf) {
@@ -437,6 +546,7 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
             model.path().c_str());
         return nullptr;
     }
+    const size_t data_off = gguf_get_data_offset(mmap_gguf);
 
     // Count tensors for ctx overhead budget, collect their metadata.
     struct TensorInfo {
@@ -447,12 +557,9 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
         size_t      n_bytes;
         void*       src;   // host pointer to mmapped bytes
     };
-    // IMPORTANT: gguf_init_from_file populates mmap_ctx with BOTH the
-    // named weight tensors AND a single "GGUF tensor data binary blob"
-    // I8 tensor of the full file payload size. Walking the ggml_context
-    // with ggml_get_first/next_tensor picks up both, doubling our
-    // allocation request. Iterate via the gguf API instead — it lists
-    // only the named weights.
+    // With no_alloc=true the ggml_context holds only tensor descriptors
+    // (no GGUF data blob), so iterating via the gguf API and computing
+    // data pointers from offsets is the correct path.
     std::vector<TensorInfo> tensors;
     const int64_t n_gguf_tensors = gguf_get_n_tensors(mmap_gguf);
     tensors.reserve((size_t)n_gguf_tensors);
@@ -474,7 +581,7 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
         ti.n_dims = ggml_n_dims(t);
         for (int d = 0; d < GGML_MAX_DIMS; ++d) ti.ne[d] = t->ne[d];
         ti.n_bytes = ggml_nbytes(t);
-        ti.src     = t->data;
+        ti.src     = (void*)(mmap_base + data_off + gguf_get_tensor_offset(mmap_gguf, i));
         src_total += ti.n_bytes;
         bytes_by_type[(int)ti.type] += ti.n_bytes;
         count_by_type[(int)ti.type] += 1;
@@ -563,14 +670,16 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
     dump_vram("after all tensor_set copies");
 #endif
 
-    // Pass-1 data has been copied into the backend buffer; release it,
-    // OR if we kept CPU mmap gates open for un-offloaded layers, bind them to the impl so they survive!
+    // The ggml mmap_ctx + gguf parser are no longer needed once tensor
+    // descriptors and pointers have been wired up — un-offloaded tensors
+    // alias into our file mmap (held by w->impl_->mmap_file) rather than
+    // any ggml-owned storage. Free the parser pair in both cases.
+    ggml_free(mmap_ctx);
+    gguf_free(mmap_gguf);
+    // For full offload, the GPU holds its own copy and we never read
+    // the file again — drop the mmap to release the file handle.
     if (full_offload) {
-        ggml_free(mmap_ctx);
-        gguf_free(mmap_gguf);
-    } else {
-        w->impl_->meta_ctx = mmap_ctx;
-        w->impl_->gguf = mmap_gguf;
+        w->impl_->mmap_file.close();
     }
 #ifdef SP_ENGINE_WITH_CUDA
     dump_vram("after mmap ctx + gguf free");
@@ -609,10 +718,18 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_multi_gpu_(
         "[sp-engine] LlamaWeights::load_multi_gpu: %d GPUs, %d/%d layers offloaded\n",
         n_gpus, std::min(n_gpu_layers, n_layer_total), n_layer_total);
 
-    // Pass 1: mmap to get tensor data.
+    // Pass 1: mmap the file (no heap copy) and parse with no_alloc=true.
+    if (!w->impl_->mmap_file.open(model.path().c_str())) {
+        std::fprintf(stderr,
+            "[sp-engine] LlamaWeights: mmap of %s failed (multi-gpu pass 1)\n",
+            model.path().c_str());
+        return nullptr;
+    }
+    const uint8_t* mmap_base = (const uint8_t*)w->impl_->mmap_file.base;
+
     ggml_context* mmap_ctx = nullptr;
     gguf_init_params p1 = {};
-    p1.no_alloc = false;
+    p1.no_alloc = true;          // descriptors only; data via our mmap
     p1.ctx      = &mmap_ctx;
     gguf_context* mmap_gguf = gguf_init_from_file(model.path().c_str(), p1);
     if (!mmap_gguf) {
@@ -621,6 +738,7 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_multi_gpu_(
             model.path().c_str());
         return nullptr;
     }
+    const size_t data_off = gguf_get_data_offset(mmap_gguf);
 
     // Collect tensor metadata + data pointers + target GPU assignment.
     struct TensorInfo {
@@ -647,7 +765,9 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_multi_gpu_(
         ti.n_dims = ggml_n_dims(t);
         for (int d = 0; d < GGML_MAX_DIMS; ++d) ti.ne[d] = t->ne[d];
         ti.n_bytes = ggml_nbytes(t);
-        ti.src     = t->data;
+        // With no_alloc=true the descriptor's data pointer is NULL.
+        // Compute the file-mmap offset instead.
+        ti.src     = (void*)(mmap_base + data_off + gguf_get_tensor_offset(mmap_gguf, i));
 
         // Assign GPU: parse layer index from "blk.N.xxx" names.
         int layer = -1;
@@ -825,13 +945,13 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_multi_gpu_(
         }
     }
 
-    // Retain mmap context if we have CPU-resident tensors.
-    if (!full_offload) {
-        w->impl_->meta_ctx = mmap_ctx;
-        w->impl_->gguf = mmap_gguf;
-    } else {
-        ggml_free(mmap_ctx);
-        gguf_free(mmap_gguf);
+    // ggml mmap_ctx + parser are no longer needed — un-offloaded tensors
+    // alias into our file mmap (held by w->impl_->mmap_file). Free the
+    // parser pair in both cases. For full offload, also drop the file mmap.
+    ggml_free(mmap_ctx);
+    gguf_free(mmap_gguf);
+    if (full_offload) {
+        w->impl_->mmap_file.close();
     }
 
     // Bind tensor names to struct fields (tok_embd, layers[], etc.).
