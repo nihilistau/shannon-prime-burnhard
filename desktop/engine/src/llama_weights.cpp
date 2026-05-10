@@ -116,6 +116,11 @@ struct LlamaWeights::Impl {
     // into it (CPU-mmap path, partial-offload path). For full-offload
     // we drop it after the backend copies finish.
     SpFileMap mmap_file;
+    // CPU backend buffer that wraps the mmap region. Required so that
+    // un-offloaded tensors expose `tensor->buffer` to the multi-backend
+    // scheduler — without it, the scheduler can't see them as CPU-resident
+    // and routes them onto the GPU, producing wild-pointer access faults.
+    ggml_backend_buffer_t cpu_mmap_buf = nullptr;
 
     ~Impl() {
         // Multi-GPU cleanup (reverse order).
@@ -126,10 +131,11 @@ struct LlamaWeights::Impl {
             if (gpu_ctxs[i]) ggml_free(gpu_ctxs[i]);
         }
         // Single-GPU / mmap cleanup.
-        if (backend_buf) ggml_backend_buffer_free(backend_buf);
-        if (ctx)         ggml_free(ctx);
-        if (meta_ctx)    ggml_free(meta_ctx);
-        if (gguf)        gguf_free(gguf);
+        if (backend_buf)  ggml_backend_buffer_free(backend_buf);
+        if (cpu_mmap_buf) ggml_backend_buffer_free(cpu_mmap_buf);
+        if (ctx)          ggml_free(ctx);
+        if (meta_ctx)     ggml_free(meta_ctx);
+        if (gguf)         gguf_free(gguf);
         // mmap_file released by its own destructor.
     }
 };
@@ -612,6 +618,29 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
         gguf_free(mmap_gguf);
         return nullptr;
     }
+    // Wrap the mmap region in a CPU backend buffer so un-offloaded
+    // tensors expose `tensor->buffer` to the scheduler. Without this,
+    // the multi-backend scheduler can't tell which backend a CPU-mmap'd
+    // tensor lives on and may route a GPU kernel against a host pointer
+    // (rms_norm reading 1.86 TiB out of bounds was the symptom).
+    if (!full_offload) {
+        w->impl_->cpu_mmap_buf = ggml_backend_cpu_buffer_from_ptr(
+            (void*)mmap_base, w->impl_->mmap_file.size);
+        if (!w->impl_->cpu_mmap_buf) {
+            std::fprintf(stderr,
+                "[sp-engine] LlamaWeights: cpu_buffer_from_ptr failed\n");
+            ggml_free(mmap_ctx);
+            gguf_free(mmap_gguf);
+            return nullptr;
+        }
+    }
+
+    // Pass 2: create tensor descriptors. For each tensor, decide if it
+    // goes to the GPU backend (offload=true) or stays in the CPU mmap
+    // buffer (offload=false). CPU-side tensors get bound to cpu_mmap_buf
+    // up-front via ggml_backend_tensor_alloc; that sets both ->buffer
+    // and ->data, so ggml_backend_alloc_ctx_tensors below only allocates
+    // GPU buffer space for the un-bound (offloaded) tensors.
     for (const auto& ti : tensors) {
         ggml_tensor* t;
         if      (ti.n_dims == 1) t = ggml_new_tensor_1d(w->impl_->ctx, ti.type, ti.ne[0]);
@@ -632,14 +661,24 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
         }
 
         if (!offload) {
-            t->data = ti.src;
+            ggml_status st = ggml_backend_tensor_alloc(
+                w->impl_->cpu_mmap_buf, t, ti.src);
+            if (st != GGML_STATUS_SUCCESS) {
+                std::fprintf(stderr,
+                    "[sp-engine] LlamaWeights: cpu tensor_alloc failed for %s (%d)\n",
+                    ti.name.c_str(), (int)st);
+                ggml_free(mmap_ctx);
+                gguf_free(mmap_gguf);
+                return nullptr;
+            }
         }
     }
 
 #ifdef SP_ENGINE_WITH_CUDA
     dump_vram("before ggml_backend_alloc_ctx_tensors");
 #endif
-    // Allocate storage on the target backend.
+    // Allocate storage on the target backend (GPU). Tensors already bound
+    // to cpu_mmap_buf above are skipped by alloc_ctx_tensors.
     w->impl_->backend_buf = ggml_backend_alloc_ctx_tensors(w->impl_->ctx, backend);
     if (!w->impl_->backend_buf) {
         std::fprintf(stderr, "[sp-engine] LlamaWeights: alloc_ctx_tensors on backend failed\n");
@@ -920,6 +959,20 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_multi_gpu_(
         }
     }
 
+    // Wrap mmap region in a CPU backend buffer so CPU-mapped tensors
+    // expose ->buffer to the scheduler (see load_backend_offload_ comment).
+    if (!full_offload && !w->impl_->cpu_mmap_buf) {
+        w->impl_->cpu_mmap_buf = ggml_backend_cpu_buffer_from_ptr(
+            (void*)mmap_base, w->impl_->mmap_file.size);
+        if (!w->impl_->cpu_mmap_buf) {
+            std::fprintf(stderr,
+                "[sp-engine] LlamaWeights: cpu_buffer_from_ptr failed (multi-gpu)\n");
+            ggml_free(mmap_ctx);
+            gguf_free(mmap_gguf);
+            return nullptr;
+        }
+    }
+
     // Populate master context: create tensor placeholders and point data
     // at the appropriate source (GPU buffer tensor data, or CPU mmap).
     for (const auto& ti : tensors) {
@@ -940,8 +993,17 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_multi_gpu_(
                 t->view_offs = gpu_t->view_offs;
             }
         } else {
-            // CPU-mapped: point at mmap data.
-            t->data = ti.src;
+            // CPU-mapped: bind into cpu_mmap_buf so scheduler sees ->buffer.
+            ggml_status st = ggml_backend_tensor_alloc(
+                w->impl_->cpu_mmap_buf, t, ti.src);
+            if (st != GGML_STATUS_SUCCESS) {
+                std::fprintf(stderr,
+                    "[sp-engine] LlamaWeights: cpu tensor_alloc failed for %s (%d, multi-gpu)\n",
+                    ti.name.c_str(), (int)st);
+                ggml_free(mmap_ctx);
+                gguf_free(mmap_gguf);
+                return nullptr;
+            }
         }
     }
 
