@@ -1,0 +1,40 @@
+sp-engine.exe : [sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=0 mobile=0
+At line:1 char:44
++ ... StartNew(); & 'C:\Projects\shannon-prime-burnhard\build_beast\bin\sp- ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([sp-mode] LEGAC...ecar=0 mobile=0:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 12287 MiB):
+  Device 0: NVIDIA GeForce RTX 2060, compute capability 7.5, VMM: yes, VRAM: 12287 MiB
+[sp-engine] GPU 0: NVIDIA GeForce RTX 2060 — 10.95 / 12.00 GiB
+[sp-engine] backend: CUDA0 (GPU)
+[sp-engine:diag] load_backend_offload_: enter             VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] gguf named tensors: 399, sum(ggml_nbytes)=8300.36 MiB
+[sp-engine:diag]   type=0 count=145 bytes=1.18 MiB
+[sp-engine:diag]   type=8 count=254 bytes=8299.19 MiB
+[sp-engine:diag] after mmap_ctx walk                      VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] before ggml_backend_alloc_ctx_tensors    VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] backend_buf_size=8300.36 MiB (what ggml allocated on backend)
+[sp-engine:diag] after ggml_backend_alloc_ctx_tensors     VRAM free=2.84 GiB used=9.16 GiB / total=12.00 GiB
+[sp-engine] LlamaWeights: offloaded 399 tensors (8300.36 MiB) to backend
+[sp-engine:diag] after all tensor_set copies              VRAM free=2.58 GiB used=9.42 GiB / total=12.00 GiB
+[sp-engine:diag] after mmap ctx + gguf free               VRAM free=2.59 GiB used=9.41 GiB / total=12.00 GiB
+[sp-engine] ForwardContext: multi-backend scheduler active (GPU + CPU fallback)
+[sp-cuda-hier] init: pd=154 skel=14 target=140 res_bits=2 bytes_per_pos=53 n_slots=288 max_seq=137
+[sp-engine] KvCache::create_gpu: hier path, hd=128 pad_dim=154 n_skel=14 n_target=140 res_bits=2 bytes_per_pos=53
+[sp-engine] hierarchical (GPU) cache: n_layer=36 n_head_kv=8 head_dim=128 pad_dim=154 max_seq=137 compression=4.83x 
+skel=14/154 (9%) K=53B/pos V=53B/pos [GPU-resident]
+[sp-engine] PE: PrimePE-RoPE (composite-tiered, alpha=0.17)
+[sp-engine:diag] bind_cache: is_gpu=1 n_layer=36 n_head_kv=8 head_dim=128 max_seq=137
+[sp-mertens] Initialized for ctx=137: 8 high-risk positions flagged, O(1) risk cache active (0 KB)
+[sp-engine] Cauchy system initialized: mode=2 fixed_n=512 ricci=no mertens=yes params_b=0.00
+[sp-engine] forward_full: graph built — 1192 nodes, 0 leafs
+[sp-engine] forward_full: alloc OK, starting compute...
+[sp-engine] warning: hierarchical cache is calibrating on only 5 samples per slot; predictor is underdetermined. Use a 
+prompt of >= 24 tokens for coherent decode, or switch to --sqfree.
+[Shannon-Prime HIER] WARNING: calibration needs >= 24 tokens (got 5). Ridge regression may underfit.
+[Shannon-Prime HIER] (suppressing further calibration warnings)
+[sp-engine:diag] calibrate_end: uploaded 288 hier W matrices to GPU (140×14 fp16 each)
+Once upon a time,[sp-engine:diag] decode() first call: gpu_cache=1 past_n=5
+ and the is) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) ) )=== WALL_MS=124190

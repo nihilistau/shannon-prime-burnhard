@@ -345,6 +345,25 @@ void ForwardContext::print_crt_stats() const {
     }
 }
 
+void ForwardContext::set_n_experts_used(int k) {
+    if (impl_->n_expert <= 0) {
+        std::fprintf(stderr,
+            "[sp-engine] set_n_experts_used: model is not MoE, ignoring\n");
+        return;
+    }
+    if (k < 1 || k > impl_->n_expert) {
+        std::fprintf(stderr,
+            "[sp-engine] set_n_experts_used: %d out of range [1, %d], ignoring\n",
+            k, impl_->n_expert);
+        return;
+    }
+    if (k == impl_->n_expert_used) return;
+    std::fprintf(stderr,
+        "[sp-engine] n_experts_used override: %d -> %d (CLI)\n",
+        impl_->n_expert_used, k);
+    impl_->n_expert_used = k;
+}
+
 void ForwardContext::set_furnace_dispatch(int mode) {
     if (mode < 0 || mode > 2) {
         std::fprintf(stderr,
@@ -561,6 +580,18 @@ std::unique_ptr<ForwardContext> ForwardContext::create(const Model& model,
                                                                model.get_i64(arch + ".norm_topk_prob", 0)) != 0;
             fc->impl_->expert_weights_scale = (float)model.get_f64(
                 arch + ".expert_weights_scale", 1.0);
+            // Runtime override of top-K experts. SP_N_EXPERTS_USED clamps
+            // to [1, n_expert]. Lowering top-K cuts MoE FFN compute roughly
+            // proportionally (LM Studio's 35B-A3B 30 tok/s config uses 4).
+            if (const char* env = std::getenv("SP_N_EXPERTS_USED")) {
+                int v = std::atoi(env);
+                if (v > 0 && v <= fc->impl_->n_expert) {
+                    std::fprintf(stderr,
+                        "[sp-engine] n_expert_used override: %d -> %d (env)\n",
+                        fc->impl_->n_expert_used, v);
+                    fc->impl_->n_expert_used = v;
+                }
+            }
         }
 
         // mRoPE rotation layout: GGML_ROPE_TYPE_MROPE (=8) is a standalone
@@ -1044,8 +1075,25 @@ static ggml_tensor* build_moe_ffn(ggml_context* gctx,
     ggml_tensor* moe_out = nullptr;
     ggml_tensor* moe_out_furnace = nullptr;
 
-    const bool run_stock   = (furnace_dispatch != 2);  // off=run, audit=run, on=skip
-    const bool run_furnace = (furnace_dispatch != 0);  // off=skip, audit=run, on=run
+    // Per-expert split (--experts-on-cpu N): the stock ggml_mul_mat_id
+    // path indexes into the bundled L.ffn_*_exps tensor by raw expert id.
+    // With split active, that tensor only holds the GPU sub-bank
+    // (experts [pivot, n_expert)) — ids [0, pivot) would either OOB or
+    // silently read the wrong row. Force the Furnace path which knows
+    // about both sub-banks via its userdata.
+    const bool split_active = (L.n_experts_cpu > 0 && L.ffn_gate_exps_cpu);
+    const int  effective_dispatch = split_active ? 2 : furnace_dispatch;
+    const bool run_stock   = (effective_dispatch != 2);  // off=run, audit=run, on=skip
+    const bool run_furnace = (effective_dispatch != 0);  // off=skip, audit=run, on=run
+    if (split_active && furnace_dispatch == 0) {
+        static bool logged_force_furnace = false;
+        if (!logged_force_furnace) {
+            std::fprintf(stderr,
+                "[sp-engine] per-expert split active (n_experts_cpu=%d) — "
+                "forcing furnace dispatch on this layer\n", L.n_experts_cpu);
+            logged_force_furnace = true;
+        }
+    }
 
     if (run_stock) {
         ggml_tensor* cur_3d = ggml_reshape_3d(gctx, cur, n_embd, 1, n_tokens);
@@ -1073,26 +1121,44 @@ static ggml_tensor* build_moe_ffn(ggml_context* gctx,
         // bound and gpu_ready, the residue matmul inside dispatches to
         // CUDA M1 chamber on RTX + Vulkan/L0 M2 chamber on UHD; otherwise
         // falls back to the bit-exact host residue path.
-        moe_out_furnace = sp_build_burn_moe_op(gctx, cur, selected, weights,
-                                                  L.ffn_gate_exps, L.ffn_up_exps,
-                                                  L.ffn_down_exps, n_expert_used,
-                                                  crt);
+        //
+        // Per-expert split: when L.ffn_*_exps_cpu are populated by the
+        // loader (--experts-on-cpu N), pass them through alongside the
+        // GPU sub-bank + the pivot. BURN_MOE then routes per-expert id:
+        // ids in [0, pivot) → CPU bank (host residue), ids >= pivot →
+        // GPU bank (CRT-dispatched when armed).
+        moe_out_furnace = sp_build_burn_moe_op(
+            gctx, cur, selected, weights,
+            L.ffn_gate_exps,     L.ffn_up_exps,     L.ffn_down_exps,
+            L.ffn_gate_exps_cpu, L.ffn_up_exps_cpu, L.ffn_down_exps_cpu,
+            n_expert_used,
+            L.n_experts_cpu,
+            crt);
+        // sp_build_burn_moe_op returns a 4D tensor [n_embd, n_tokens, 1, 1]
+        // (ggml_custom_4d's only API). Stock moe_out is 2D — reshape to
+        // match so downstream ggml_add(residual, ffn_out) doesn't see a
+        // shape mismatch and the moe_out alias below stays consistent.
+        if (moe_out_furnace) {
+            moe_out_furnace = ggml_reshape_2d(gctx, moe_out_furnace, n_embd, n_tokens);
+        }
     }
 
-    if (furnace_dispatch == 2) {
-        // ON: Furnace is the only path; use its output downstream.
+    // Use effective_dispatch (split coercion applied) here, not the raw
+    // CLI furnace_dispatch — otherwise when split forces furnace=on but
+    // the user didn't pass --furnace-dispatch=on, the post-furnace branch
+    // would leave moe_out=nullptr, and the caller's ggml_add(x, ffn_out)
+    // would deref a null tensor and crash silently inside the per-layer
+    // build loop (no GGML_ASSERT, no CUDA error — pure host abort).
+    if (effective_dispatch == 2) {
+        // ON (or split-forced): Furnace is the only path; use its output downstream.
         moe_out = moe_out_furnace;
-    } else if (furnace_dispatch == 1) {
+    } else if (effective_dispatch == 1) {
         // AUDIT: keep stock as output. Mark Furnace shadow as a graph
         // output so the post-compute step can read it back and compute
         // the per-layer NRMSE delta.
         ggml_set_output(moe_out_furnace);
-        // (audit-side capture wiring lives in forward_full's epilogue —
-        //  TODO: thread cap_furnace[i] = moe_out_furnace through the
-        //  layer dispatch loop. For now the shadow is computed but not
-        //  yet differenced — adding that hook is the next sub-step.)
     }
-    // furnace_dispatch == 0: moe_out is stock, moe_out_furnace is null.
+    // effective_dispatch == 0: moe_out is stock, moe_out_furnace is null.
 
     // 7. Shared expert (qwen35moe: sigmoid-gated, runs for every token).
     if (L.ffn_gate_shexp && L.ffn_up_shexp && L.ffn_down_shexp) {
@@ -1701,7 +1767,8 @@ static ggml_tensor* build_block_gdn(ggml_context* gctx,
                                      float expert_weights_scale,
                                      bool  is_moe = true,
                                      ggml_tensor** selected_capture = nullptr,
-                                     int   furnace_dispatch = 0) {
+                                     int   furnace_dispatch = 0,
+                                     sp_crt_dispatch_t* crt = nullptr) {
     const int qk_dim = num_qk_heads * head_qk_dim;  // 2048
     const int v_dim  = num_v_heads  * head_v_dim;   // 4096
     const size_t ele = ggml_type_size(GGML_TYPE_F32);
@@ -1907,7 +1974,7 @@ static ggml_tensor* build_block_gdn(ggml_context* gctx,
         ffn_out = build_moe_ffn(gctx, xb, L,
                                 n_expert, n_expert_used,
                                 norm_topk_prob, expert_weights_scale,
-                                selected_capture, /*crt=*/nullptr,
+                                selected_capture, crt,
                                 furnace_dispatch);
     } else {
         // Dense SwiGLU FFN (qwen35 non-MoE hybrid).
@@ -2246,7 +2313,8 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
                                  impl_->norm_topk_prob, impl_->expert_weights_scale,
                                  impl_->is_moe,
                                  curriculum_active ? &sel_cap : nullptr,
-                                 impl_->furnace_dispatch);
+                                 impl_->furnace_dispatch,
+                                 impl_->crt_dispatch);
             if (conv_out) { ggml_set_output(conv_out); gdn_conv_state_out[(size_t)i] = conv_out; }
             if (ssm_out)  { ggml_set_output(ssm_out);  gdn_ssm_state_out[(size_t)i]  = ssm_out;  }
             break;
@@ -3311,7 +3379,8 @@ bool ForwardContext::decode(int32_t token_id,
                                  impl_->norm_topk_prob, impl_->expert_weights_scale,
                                  impl_->is_moe,
                                  /*selected_capture=*/nullptr,
-                                 impl_->furnace_dispatch);
+                                 impl_->furnace_dispatch,
+                                 impl_->crt_dispatch);
             if (conv_out) { ggml_set_output(conv_out); gdn_conv_state_out[(size_t)L] = conv_out; }
             if (ssm_out)  { ggml_set_output(ssm_out);  gdn_ssm_state_out [(size_t)L] = ssm_out;  }
             break;

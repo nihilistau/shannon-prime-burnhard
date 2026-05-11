@@ -1,0 +1,3 @@
+[sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=1 mobile=0
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 12287 MiB):
+  Device 0: NVIDIA GeForce RTX 2060, compute capability 7.5, VMM: yes, VRAM: 12287 MiB

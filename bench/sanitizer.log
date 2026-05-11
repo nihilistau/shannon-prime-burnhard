@@ -1,0 +1,512 @@
+========= COMPUTE-SANITIZER
+[sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=0 mobile=0
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 12287 MiB):
+  Device 0: NVIDIA GeForce RTX 2060, compute capability 7.5, VMM: yes, VRAM: 12287 MiB
+[sp-engine] GPU 0: NVIDIA GeForce RTX 2060 — 10.90 / 12.00 GiB
+[sp-engine] backend: CUDA0 (GPU)
+[sp-engine] LlamaWeights::load: partial offload — layers [0,4) on GPU, [4,40) + non-layer on CPU. ForwardContext scheduler handles cross-backend copies.
+[sp-engine:diag] load_backend_offload_: enter             VRAM free=10.90 GiB used=1.10 GiB / total=12.00 GiB
+[sp-engine:diag] gguf named tensors: 733, sum(ggml_nbytes)=20175.71 MiB
+[sp-engine:diag]   type=14 count=61 bytes=4802.93 MiB
+[sp-engine:diag]   type=0 count=301 bytes=84.74 MiB
+[sp-engine:diag]   type=12 count=371 bytes=15288.05 MiB
+[sp-engine:diag] after mmap_ctx walk                      VRAM free=10.90 GiB used=1.10 GiB / total=12.00 GiB
+[sp-engine:diag] before ggml_backend_alloc_ctx_tensors    VRAM free=10.90 GiB used=1.10 GiB / total=12.00 GiB
+[sp-engine:diag] backend_buf_size=2089.72 MiB (what ggml allocated on backend)
+[sp-engine:diag] after ggml_backend_alloc_ctx_tensors     VRAM free=6.45 GiB used=5.55 GiB / total=12.00 GiB
+[sp-engine] LlamaWeights: offloaded 733 tensors (2089.72 MiB) to backend
+[sp-engine:diag] after all tensor_set copies              VRAM free=6.49 GiB used=5.51 GiB / total=12.00 GiB
+[sp-engine:diag] after mmap ctx + gguf free               VRAM free=6.49 GiB used=5.51 GiB / total=12.00 GiB
+[sp-engine] mRoPE mode=8 sections=[11,11,10,0] n_rot=64
+[sp-engine] ForwardContext: multi-backend scheduler active (GPU + CPU fallback)
+[sp-engine] shadow cache: n_layer=40 n_head_kv=2 head_dim=256 pad_dim=256 max_seq=7 compression=4.23x
+[sp-engine] PE: PrimePE-RoPE (composite-tiered, alpha=0.17)
+[sp-engine:diag] bind_cache: is_gpu=0 n_layer=40 n_head_kv=2 head_dim=256 max_seq=7
+[sp-mertens] Initialized for ctx=7: 0 high-risk positions flagged, O(1) risk cache active (0 KB)
+[sp-engine] Cauchy system initialized: mode=2 fixed_n=512 ricci=no mertens=yes params_b=0.00
+[sp-engine] forward_full: graph built — 2994 nodes, 0 leafs
+[sp-engine] forward_full: alloc OK, starting compute...
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (0,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe60 is out of bounds
+=========     and is 1,866,479,828,577 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (1,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe64 is out of bounds
+=========     and is 1,866,479,828,581 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (2,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe68 is out of bounds
+=========     and is 1,866,479,828,585 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (3,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe6c is out of bounds
+=========     and is 1,866,479,828,589 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (4,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe70 is out of bounds
+=========     and is 1,866,479,828,593 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (5,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe74 is out of bounds
+=========     and is 1,866,479,828,597 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (6,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe78 is out of bounds
+=========     and is 1,866,479,828,601 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (7,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe7c is out of bounds
+=========     and is 1,866,479,828,605 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (8,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe80 is out of bounds
+=========     and is 1,866,479,828,609 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (9,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe84 is out of bounds
+=========     and is 1,866,479,828,613 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (10,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe88 is out of bounds
+=========     and is 1,866,479,828,617 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (11,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe8c is out of bounds
+=========     and is 1,866,479,828,621 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (12,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe90 is out of bounds
+=========     and is 1,866,479,828,625 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (13,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe94 is out of bounds
+=========     and is 1,866,479,828,629 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (14,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe98 is out of bounds
+=========     and is 1,866,479,828,633 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (15,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfe9c is out of bounds
+=========     and is 1,866,479,828,637 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (16,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfea0 is out of bounds
+=========     and is 1,866,479,828,641 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (17,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfea4 is out of bounds
+=========     and is 1,866,479,828,645 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (18,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfea8 is out of bounds
+=========     and is 1,866,479,828,649 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Invalid __global__ read of size 4 bytes
+=========     at void rms_norm_f32<(int)1024, (bool)1, (bool)0>(const float *, float *, int, long long, long long, long long, float, const float *, long long, long long, long long, uint3, uint3, uint3, uint3, const float *, long long, long long, long long, uint3, uint3, uint3, uint3)+0x10d0
+=========     by thread (19,0,0) in block (0,0,0)
+=========     Access to 0x1c192fdfeac is out of bounds
+=========     and is 1,866,479,828,653 bytes after the nearest allocation at 0xf00000000 of size 2,097,152 bytes
+=========     Saved host backtrace up to driver entry point at kernel launch time
+=========         Host Frame: cuLaunchKernel [0x7ffe9a75eae8] in nvcuda64.dll
+=========         Host Frame:  [0xdd4e] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7b0345f3] in nvcudart_hybrid64.dll
+=========         Host Frame: _cudaGetProcAddress [0x7ffe7aff7d51] in nvcudart_hybrid64.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe610b156a] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c1952] in ggml-cuda.dll
+=========         Host Frame: ggml_backend_is_cuda [0x7ffe609c04d3] in ggml-cuda.dll
+=========         Host Frame:  [0xdf8bc] in ggml-cuda.dll
+=========         Host Frame:  [0xd2275] in ggml-cuda.dll
+=========         Host Frame: ggml_tallocr_new [0x7ffe7b455c93] in ggml-base.dll
+=========         Host Frame: ggml_backend_sched_graph_compute [0x7ffe7b459302] in ggml-base.dll
+=========         Host Frame:  [0x1d262] in sp-engine.exe
+=========         Host Frame:  [0x1e405] in sp-engine.exe
+=========         Host Frame:  [0xaee5] in sp-engine.exe
+=========         Host Frame:  [0x9d990] in sp-engine.exe
+=========         Host Frame: BaseThreadInitThunk [0x7ff8625ee8d7] in KERNEL32.DLL
+=========         Host Frame: RtlUserThreadStart [0x7ff86324c3fc] in ntdll.dll
+========= 
+========= Error: process didn't terminate successfully
+========= Target application returned an error
+========= ERROR SUMMARY: 2049 errors
+========= ERROR SUMMARY: 2029 errors were not printed. Use --print-limit option to adjust the number of printed errors

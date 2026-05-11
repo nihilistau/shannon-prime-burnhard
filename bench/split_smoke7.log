@@ -1,0 +1,81 @@
+sp-engine.exe : [sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=0 mobile=0
+At line:1 char:42
++ ... StartNew(); & 'C:\Projects\shannon-prime-burnhard\build_beast\bin\sp- ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([sp-mode] LEGAC...ecar=0 mobile=0:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 12287 MiB):
+  Device 0: NVIDIA GeForce RTX 2060, compute capability 7.5, VMM: yes, VRAM: 12287 MiB
+[sp-engine] GPU 0: NVIDIA GeForce RTX 2060 — 10.95 / 12.00 GiB
+[sp-engine] backend: CUDA0 (GPU)
+[sp-engine] LlamaWeights::load: partial offload — layers [0,19) on GPU, [19,40) + non-layer on CPU. ForwardContext 
+scheduler handles cross-backend copies.
+[sp-engine:diag] load_backend_offload_: enter             VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] expert-split: 57 expert tensors split (pivot=128 on CPU)
+[sp-engine:diag] gguf named tensors: 790, sum(ggml_nbytes)=20175.71 MiB
+[sp-engine:diag]   type=14 count=61 bytes=4802.93 MiB
+[sp-engine:diag]   type=0 count=301 bytes=84.74 MiB
+[sp-engine:diag]   type=12 count=371 bytes=15288.05 MiB
+[sp-engine:diag] after mmap_ctx walk                      VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] expert-split outcome: CPU sub-bank tensors=57 (4401.0 MiB), GPU sub-bank tensors=406 (9235.7 MiB)
+[sp-engine:diag] before ggml_backend_alloc_ctx_tensors    VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] backend_buf_size=4834.67 MiB (what ggml allocated on backend)
+[sp-engine:diag] after ggml_backend_alloc_ctx_tensors     VRAM free=6.23 GiB used=5.77 GiB / total=12.00 GiB
+[sp-engine] LlamaWeights: offloaded 790 tensors (4834.67 MiB) to backend
+[sp-engine:diag] after all tensor_set copies              VRAM free=6.23 GiB used=5.77 GiB / total=12.00 GiB
+[sp-engine:diag] after mmap ctx + gguf free               VRAM free=6.23 GiB used=5.77 GiB / total=12.00 GiB
+[sp-engine] mRoPE mode=8 sections=[11,11,10,0] n_rot=64
+[sp-engine] ForwardContext: multi-backend scheduler active (GPU + CPU fallback)
+[sp-engine] n_experts_used override: 8 -> 4 (CLI)
+[Shannon-Prime CUDA] Cache allocated:
+  K: 0.20 MB (144 bytes/vec × 80 slots × 18 seq)
+  V: 0.13 MB (98 bytes/vec × 80 slots × 18 seq)
+  Total: 0.33 MB (vs fp16 baseline: 1.41 MB)
+[sp-engine] KvCache::create_gpu: ship path, hd=256 n_layer=40 n_head_kv=2 max_seq=18 k_bytes=144 v_bytes=98
+[sp-engine] shadow (GPU) cache: n_layer=40 n_head_kv=2 head_dim=256 pad_dim=256 max_seq=18 compression=4.23x 
+[GPU-resident]
+[sp-engine] PE: PrimePE-RoPE (composite-tiered, alpha=0.17)
+[sp-engine:diag] bind_cache: is_gpu=1 n_layer=40 n_head_kv=2 head_dim=256 max_seq=18
+[sp-mertens] Initialized for ctx=18: 0 high-risk positions flagged, O(1) risk cache active (0 KB)
+[sp-engine] Cauchy system initialized: mode=2 fixed_n=512 ricci=no mertens=yes params_b=0.00
+[sp-trace] layer 0 enter, kind=2, n_experts_cpu=128, gate_exps=0000022A19CE8740, gate_exps_cpu=0000022A19CE85D0
+[sp-engine] per-expert split active (n_experts_cpu=128) — forcing furnace dispatch on this layer
+[burn_moe] per-expert split ARMED — pivot=128 (CPU bank ids [0,128), GPU bank ids [128,n_expert))
+[sp-trace] layer 1 enter, kind=2, n_experts_cpu=128, gate_exps=0000022A19CEA6E0, gate_exps_cpu=0000022A19CEA570
+[sp-trace] layer 2 enter, kind=2, n_experts_cpu=128, gate_exps=0000022A19CEC680, gate_exps_cpu=0000022A19CEC510
+[sp-trace] layer 39 enter, kind=1, n_experts_cpu=0, gate_exps=0000022A19D2DE70, gate_exps_cpu=0000000000000000
+[sp-trace] forward_full: per-layer build loop done
+[sp-trace] forward_full: GDN state expand done
+[sp-engine] forward_full: graph built — 2823 nodes, 0 leafs
+[sp-engine] forward_full: alloc OK, starting compute...
+[burn_moe-trace c1] enter pivot=128 cpu_gate=0000022A19CE85D0
+[burn_moe] budget per call: I/O=0.1 MiB  dequant_cache_cap=32 × 12.0 MiB = 384.0 MiB  (n_embd=2048 n_ff=512 
+n_tokens=6 k=4)
+[burn_moe-trace c1] before tensor_get cur
+[burn_moe-trace c1] before tensor_get selected
+[burn_moe-trace c1] before tensor_get weights
+[burn_moe-trace c1] inputs ok n_tokens=6 n_embd=2048 n_ff=512, sel[0..k)=64 216 161 125 
+[burn_moe-trace c1] t=0 k=0 e=64 w=0.453831 pivot=128 -> CPU bank
+[burn_moe-trace c1] t=0 k=0 e=64 dequant OK
+[burn_moe-trace c1] t=0 k=1 e=216 w=0.046547 pivot=128 -> GPU bank
+[burn_moe-trace c1] t=0 k=1 e=216 dequant OK
+[burn_moe-trace c1] t=0 k=2 e=161 w=0.287351 pivot=128 -> GPU bank
+[burn_moe-trace c1] t=0 k=2 e=161 dequant OK
+[burn_moe-trace c1] t=0 k=3 e=125 w=0.0810109 pivot=128 -> CPU bank
+[burn_moe-trace c1] t=0 k=3 e=125 dequant OK
+[burn_moe-trace c2] enter pivot=128 cpu_gate=0000022A19CEA570
+[burn_moe-trace c2] before tensor_get cur
+[burn_moe-trace c2] before tensor_get selected
+[burn_moe-trace c2] before tensor_get weights
+[burn_moe-trace c2] inputs ok n_tokens=6 n_embd=2048 n_ff=512, sel[0..k)=84 220 137 222 
+[burn_moe-trace c3] enter pivot=128 cpu_gate=0000022A19CEC510
+[burn_moe-trace c3] before tensor_get cur
+[burn_moe-trace c3] before tensor_get selected
+[burn_moe-trace c3] before tensor_get weights
+[burn_moe-trace c3] inputs ok n_tokens=6 n_embd=2048 n_ff=512, sel[0..k)=0 168 165 206 
+The capital of France is [sp-engine:diag] decode() first call: gpu_cache=1 past_n=6
+ Équipements品的 😀 dó  dóان[sp-engine] kv_pos=13  (prompt=6, generated=8)
+[sp-cauchy] mode=dynamic (Ricci+Mertens)  resets=0  last_reset_pos=-999999  mertens_schedule=0/0
+
+=== WALL_MS=105352

@@ -108,6 +108,65 @@ std::unique_ptr<Model> Model::load(const std::string& path) {
     m->rope_freq_base_  = (float)   gguf_try_f64(g, (p + "rope.freq_base").c_str(), 10000.0);
     m->context_length_  = (uint32_t)gguf_try_i64(g, (p + "context_length").c_str(), 0);
 
+    // ── Gemma4 KV fold ──────────────────────────────────────────────
+    // Gemma4 stores K/V projections at 2× head_dim per base KV head
+    // (8 base heads × 512 = 4096 output), then reshapes to 16 effective
+    // KV heads × head_dim in the forward pass.  head_dim = 256 for the
+    // 31B variant.  The GGUF's key_length (512) is the doubled dim;
+    // head_count_kv is absent.  Derive the effective dims from Q and K
+    // tensor byte sizes.
+    if (m->arch_ == "gemma4" && m->n_head_ > 0 && m->n_embd_ > 0) {
+        int64_t q_idx = gguf_find_tensor(g, "blk.0.attn_q.weight");
+        int64_t k_idx = gguf_find_tensor(g, "blk.0.attn_k.weight");
+        if (q_idx >= 0 && k_idx >= 0) {
+            auto q_type = gguf_get_tensor_type(g, q_idx);
+            auto k_type = gguf_get_tensor_type(g, k_idx);
+            size_t q_bytes = gguf_get_tensor_size(g, q_idx);
+            size_t k_bytes = gguf_get_tensor_size(g, k_idx);
+            // elements = bytes * blck_size / type_size
+            size_t q_elems = q_bytes * (size_t)ggml_blck_size(q_type)
+                           / ggml_type_size(q_type);
+            size_t k_elems = k_bytes * (size_t)ggml_blck_size(k_type)
+                           / ggml_type_size(k_type);
+            uint32_t q_out = (uint32_t)(q_elems / m->n_embd_);
+            uint32_t k_out = (uint32_t)(k_elems / m->n_embd_);
+            uint32_t q_head_dim = q_out / m->n_head_;            // 8192/32 = 256
+            m->n_head_kv_ = k_out / q_head_dim;                  // 4096/256 = 16
+            std::fprintf(stderr,
+                "[sp-engine] gemma4 KV fold: head_dim=%u (from Q), "
+                "n_head_kv=%u (effective, after 2x fold)\n",
+                q_head_dim, m->n_head_kv_);
+        }
+    }
+
+    // ── Gemma4 per-layer max head_dim scan ─────────────────────────
+    // Gemma4 has local layers (small head_dim) and global layers (2×
+    // head_dim, every 5th layer). KV cache must be allocated at the
+    // maximum. Scan all Q weight tensors to find the true max.
+    if (m->arch_ == "gemma4" && m->n_head_ > 0 && m->n_embd_ > 0) {
+        uint32_t max_hd = m->head_dim();
+        for (int64_t blk = 0; blk < (int64_t)m->n_layer_; ++blk) {
+            char name[64];
+            std::snprintf(name, sizeof(name), "blk.%lld.attn_q.weight",
+                          (long long)blk);
+            int64_t idx = gguf_find_tensor(g, name);
+            if (idx < 0) continue;
+            auto tp = gguf_get_tensor_type(g, idx);
+            size_t bytes = gguf_get_tensor_size(g, idx);
+            size_t elems = bytes * (size_t)ggml_blck_size(tp)
+                         / ggml_type_size(tp);
+            uint32_t q_out = (uint32_t)(elems / m->n_embd_);
+            uint32_t hd    = q_out / m->n_head_;
+            if (hd > max_hd) max_hd = hd;
+        }
+        if (max_hd > m->head_dim()) {
+            m->max_head_dim_ = max_hd;
+            std::fprintf(stderr,
+                "[sp-engine] gemma4 max_head_dim=%u (local=%u)\n",
+                max_hd, m->head_dim());
+        }
+    }
+
     // Cache tensor names for quick lookup.
     m->tensor_names_.reserve((size_t)m->n_tensors_);
     for (int64_t i = 0; i < m->n_tensors_; ++i) {
@@ -122,6 +181,19 @@ std::unique_ptr<Model> Model::load(const std::string& path) {
 // ------------------------------------------------------------------
 uint32_t Model::head_dim() const {
     if (n_head_ == 0) return 0;
+    // Gemma4: key_length (512) is the 2×-folded KV dim, not the actual
+    // per-head Q dimension. Derive from the Q tensor instead.
+    if (arch_ == "gemma4") {
+        int64_t q_idx = gguf_find_tensor(impl_->gguf, "blk.0.attn_q.weight");
+        if (q_idx >= 0) {
+            auto q_type = gguf_get_tensor_type(impl_->gguf, q_idx);
+            size_t q_bytes = gguf_get_tensor_size(impl_->gguf, q_idx);
+            size_t q_elems = q_bytes * (size_t)ggml_blck_size(q_type)
+                           / ggml_type_size(q_type);
+            uint32_t q_out = (uint32_t)(q_elems / n_embd_);
+            return q_out / n_head_;   // 8192/32 = 256
+        }
+    }
     // Prefer the explicit key if the arch ships it; otherwise derive.
     int64_t id = gguf_find_key(impl_->gguf, (arch_ + ".attention.key_length").c_str());
     if (id >= 0) return (uint32_t)gguf_try_i64(impl_->gguf, (arch_ + ".attention.key_length").c_str(), 0);

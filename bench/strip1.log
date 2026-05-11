@@ -1,0 +1,9 @@
+[sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=0 mobile=0
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 12287 MiB):
+  Device 0: NVIDIA GeForce RTX 2060, compute capability 7.5, VMM: yes, VRAM: 12287 MiB
+[sp-engine] GPU 0: NVIDIA GeForce RTX 2060 — 10.95 / 12.00 GiB
+[sp-engine] backend: CUDA0 (GPU)
+[sp-engine] LlamaWeights::load: partial offload — layers [0,4) on GPU, [4,40) + non-layer on CPU. ForwardContext scheduler handles cross-backend copies.
+[sp-engine:diag] load_backend_offload_: enter             VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+C:\Projects\shannon-prime-burnhard\vendor\ggml\src\ggml.c:1605: GGML_ASSERT(ctx->mem_buffer != NULL) failed
+=== EXIT -1073740791 ===

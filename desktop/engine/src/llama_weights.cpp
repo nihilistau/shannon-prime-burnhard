@@ -265,6 +265,15 @@ bool LlamaWeights::bind_tensors_(LlamaWeights& w, ggml_context* tctx,
                 L.ffn_gate_exps      = bind_req(layer_name(i, "ffn_gate_exps.weight"));
                 L.ffn_up_exps        = bind_req(layer_name(i, "ffn_up_exps.weight"));
                 L.ffn_down_exps      = bind_req(layer_name(i, "ffn_down_exps.weight"));
+                // Per-expert split sub-banks (synthesised by load_backend_offload_
+                // when experts_on_cpu>0). bind_opt — absent under no-split.
+                L.ffn_gate_exps_cpu  = bind_opt(layer_name(i, "ffn_gate_exps_cpu.weight"));
+                L.ffn_up_exps_cpu    = bind_opt(layer_name(i, "ffn_up_exps_cpu.weight"));
+                L.ffn_down_exps_cpu  = bind_opt(layer_name(i, "ffn_down_exps_cpu.weight"));
+                if (L.ffn_gate_exps_cpu) {
+                    // ne[2] of the cpu sub-bank == pivot.
+                    L.n_experts_cpu = (int)L.ffn_gate_exps_cpu->ne[2];
+                }
                 L.ffn_gate_inp_shexp = bind_opt(layer_name(i, "ffn_gate_inp_shexp.weight"));
                 L.ffn_gate_shexp     = bind_opt(layer_name(i, "ffn_gate_shexp.weight"));
                 L.ffn_up_shexp       = bind_opt(layer_name(i, "ffn_up_shexp.weight"));
@@ -492,7 +501,8 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_cpu_mmap_(const Model& model) {
 // at backend-resident tensors.
 // ------------------------------------------------------------------
 std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
-        const Model& model, ggml_backend_t backend, int n_gpu_layers) {
+        const Model& model, ggml_backend_t backend, int n_gpu_layers,
+        int experts_on_cpu) {
     auto w = std::unique_ptr<LlamaWeights>(new LlamaWeights());
     w->arch_ = model.architecture();
     const int n_layer_total = (int)model.n_layer();
@@ -566,12 +576,23 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
     // With no_alloc=true the ggml_context holds only tensor descriptors
     // (no GGUF data blob), so iterating via the gguf API and computing
     // data pointers from offsets is the correct path.
+    // Helper: detect bundled MoE expert tensor names so the per-expert
+    // split can intervene before descriptor creation.
+    auto is_moe_exps_name = [](const std::string& s) {
+        // Match "blk.<int>.ffn_(gate|up|down)_exps.weight"
+        int dummy;
+        return std::sscanf(s.c_str(), "blk.%d.ffn_gate_exps.weight", &dummy) == 1
+            || std::sscanf(s.c_str(), "blk.%d.ffn_up_exps.weight",   &dummy) == 1
+            || std::sscanf(s.c_str(), "blk.%d.ffn_down_exps.weight", &dummy) == 1;
+    };
+
     std::vector<TensorInfo> tensors;
     const int64_t n_gguf_tensors = gguf_get_n_tensors(mmap_gguf);
     tensors.reserve((size_t)n_gguf_tensors);
     std::unordered_map<int, size_t> bytes_by_type;
     std::unordered_map<int, int>    count_by_type;
     size_t src_total = 0;
+    int    n_split_tensors = 0;
     for (int64_t i = 0; i < n_gguf_tensors; ++i) {
         const char* name = gguf_get_tensor_name(mmap_gguf, i);
         ggml_tensor* t = ggml_get_tensor(mmap_ctx, name);
@@ -591,7 +612,57 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
         src_total += ti.n_bytes;
         bytes_by_type[(int)ti.type] += ti.n_bytes;
         count_by_type[(int)ti.type] += 1;
-        tensors.push_back(std::move(ti));
+
+        // Per-expert split: when this tensor is a bundled MoE expert
+        // weight on a GPU-bound layer and experts_on_cpu>0, emit TWO
+        // entries — a CPU-resident sub-bank covering experts [0, pivot)
+        // and a GPU-resident sub-bank covering [pivot, n_expert). The
+        // CPU sub-bank gets its own derived name (`*_exps_cpu.weight`)
+        // so bind_tensors_ can pick it up into L.ffn_*_exps_cpu.
+        bool emitted = false;
+        if (experts_on_cpu > 0 && is_moe_exps_name(ti.name)) {
+            int layer_idx = -1;
+            std::sscanf(ti.name.c_str(), "blk.%d.", &layer_idx);
+            const bool layer_on_gpu = (layer_idx >= 0 && layer_idx < n_gpu_layers);
+            if (layer_on_gpu) {
+                const int n_total = (int)ti.ne[2];
+                const int pivot   = (experts_on_cpu < n_total) ? experts_on_cpu : (n_total - 1);
+                if (pivot > 0 && pivot < n_total && (ti.n_bytes % (size_t)n_total) == 0) {
+                    const size_t expert_stride = ti.n_bytes / (size_t)n_total;
+
+                    // CPU sub-bank entry: derive name + reduced ne[2].
+                    TensorInfo cpu_ti = ti;
+                    cpu_ti.name    = ti.name;
+                    // Replace "_exps.weight" with "_exps_cpu.weight".
+                    const std::string suffix_old = "_exps.weight";
+                    const std::string suffix_new = "_exps_cpu.weight";
+                    auto pos = cpu_ti.name.rfind(suffix_old);
+                    if (pos != std::string::npos) {
+                        cpu_ti.name.replace(pos, suffix_old.size(), suffix_new);
+                    }
+                    cpu_ti.ne[2]   = pivot;
+                    cpu_ti.n_bytes = (size_t)pivot * expert_stride;
+                    // src unchanged — points at expert 0 of the original.
+
+                    // GPU sub-bank entry: keep original name, advance src.
+                    TensorInfo gpu_ti = ti;
+                    gpu_ti.ne[2]   = n_total - pivot;
+                    gpu_ti.n_bytes = (size_t)(n_total - pivot) * expert_stride;
+                    gpu_ti.src     = (void*)((uint8_t*)ti.src + (size_t)pivot * expert_stride);
+
+                    tensors.push_back(std::move(cpu_ti));
+                    tensors.push_back(std::move(gpu_ti));
+                    ++n_split_tensors;
+                    emitted = true;
+                }
+            }
+        }
+        if (!emitted) tensors.push_back(std::move(ti));
+    }
+    if (n_split_tensors > 0) {
+        std::fprintf(stderr,
+            "[sp-engine:diag] expert-split: %d expert tensors split (pivot=%d on CPU)\n",
+            n_split_tensors, experts_on_cpu);
     }
     std::fprintf(stderr,
         "[sp-engine:diag] gguf named tensors: %zu, sum(ggml_nbytes)=%.2f MiB\n",
@@ -623,7 +694,10 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
     // the multi-backend scheduler can't tell which backend a CPU-mmap'd
     // tensor lives on and may route a GPU kernel against a host pointer
     // (rms_norm reading 1.86 TiB out of bounds was the symptom).
-    if (!full_offload) {
+    //
+    // Also created when experts_on_cpu>0 even under full GPU offload —
+    // the per-expert CPU sub-banks need a CPU-side buffer to live in.
+    if (!full_offload || (experts_on_cpu > 0 && n_split_tensors > 0)) {
         w->impl_->cpu_mmap_buf = ggml_backend_cpu_buffer_from_ptr(
             (void*)mmap_base, w->impl_->mmap_file.size);
         if (!w->impl_->cpu_mmap_buf) {
@@ -659,19 +733,62 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_backend_offload_(
             // only go to the backend when every layer is offloaded.
             if (!full_offload) offload = false;
         }
+        // Per-expert split: the CPU sub-bank of a split MoE expert tensor
+        // is force-bound to cpu_mmap_buf regardless of its layer's offload
+        // decision. Detected by the "_exps_cpu.weight" name suffix the
+        // enumeration loop synthesises.
+        const std::string cpu_suffix = "_exps_cpu.weight";
+        if (offload && ti.name.size() >= cpu_suffix.size() &&
+            ti.name.compare(ti.name.size() - cpu_suffix.size(),
+                            cpu_suffix.size(), cpu_suffix) == 0) {
+            offload = false;
+        }
 
         if (!offload) {
-            ggml_status st = ggml_backend_tensor_alloc(
-                w->impl_->cpu_mmap_buf, t, ti.src);
-            if (st != GGML_STATUS_SUCCESS) {
+            if (!w->impl_->cpu_mmap_buf) {
                 std::fprintf(stderr,
-                    "[sp-engine] LlamaWeights: cpu tensor_alloc failed for %s (%d)\n",
-                    ti.name.c_str(), (int)st);
-                ggml_free(mmap_ctx);
-                gguf_free(mmap_gguf);
-                return nullptr;
+                    "[sp-engine] LlamaWeights: cpu_mmap_buf is NULL but tensor "
+                    "%s wants to bind to CPU side (offload predicate kept it "
+                    "off the GPU). Forcing GPU-side allocation as a fallback.\n",
+                    ti.name.c_str());
+            } else {
+                ggml_status st = ggml_backend_tensor_alloc(
+                    w->impl_->cpu_mmap_buf, t, ti.src);
+                if (st != GGML_STATUS_SUCCESS) {
+                    std::fprintf(stderr,
+                        "[sp-engine] LlamaWeights: cpu tensor_alloc failed for %s (%d)\n",
+                        ti.name.c_str(), (int)st);
+                    ggml_free(mmap_ctx);
+                    gguf_free(mmap_gguf);
+                    return nullptr;
+                }
             }
         }
+    }
+    // Diagnostic: count split outcome.
+    if (n_split_tensors > 0) {
+        int n_cpu = 0, n_gpu = 0;
+        size_t sz_cpu = 0, sz_gpu = 0;
+        const std::string cpu_suffix = "_exps_cpu.weight";
+        for (const auto& ti : tensors) {
+            const bool is_cpu_split = ti.name.size() >= cpu_suffix.size() &&
+                ti.name.compare(ti.name.size() - cpu_suffix.size(),
+                                cpu_suffix.size(), cpu_suffix) == 0;
+            if (is_cpu_split) { ++n_cpu; sz_cpu += ti.n_bytes; }
+            // Also count GPU sub-banks (the renamed-to-original ffn_*_exps that came from a split)
+            int dummy;
+            const bool is_gpu_split_candidate =
+                std::sscanf(ti.name.c_str(), "blk.%d.ffn_gate_exps.weight", &dummy) == 1
+             || std::sscanf(ti.name.c_str(), "blk.%d.ffn_up_exps.weight",   &dummy) == 1
+             || std::sscanf(ti.name.c_str(), "blk.%d.ffn_down_exps.weight", &dummy) == 1;
+            if (is_gpu_split_candidate && dummy < n_gpu_layers) {
+                ++n_gpu; sz_gpu += ti.n_bytes;
+            }
+        }
+        std::fprintf(stderr,
+            "[sp-engine:diag] expert-split outcome: CPU sub-bank tensors=%d (%.1f MiB), "
+            "GPU sub-bank tensors=%d (%.1f MiB)\n",
+            n_cpu, sz_cpu / 1048576.0, n_gpu, sz_gpu / 1048576.0);
     }
 
 #ifdef SP_ENGINE_WITH_CUDA
@@ -1028,7 +1145,8 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_multi_gpu_(
 std::unique_ptr<LlamaWeights> LlamaWeights::load_multi_gpu(
         const Model& model,
         const std::vector<ggml_backend_t>& gpu_backends,
-        int n_gpu_layers) {
+        int n_gpu_layers,
+        int experts_on_cpu) {
     if (!supported_arch(model.architecture())) {
         std::fprintf(stderr,
             "[sp-engine] LlamaWeights: unsupported arch '%s'\n",
@@ -1042,7 +1160,14 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_multi_gpu(
     }
     // Single GPU: fall through to standard offload path.
     if (gpu_backends.size() == 1) {
-        return load_backend_offload_(model, gpu_backends[0], n_gpu_layers);
+        return load_backend_offload_(model, gpu_backends[0], n_gpu_layers, experts_on_cpu);
+    }
+    // Multi-GPU expert split is a future extension; for now, single-GPU
+    // is the only configuration that splits per-expert.
+    if (experts_on_cpu > 0) {
+        std::fprintf(stderr,
+            "[sp-engine] LlamaWeights: experts_on_cpu (%d) ignored on multi-GPU "
+            "(only single-GPU + CPU split is wired today)\n", experts_on_cpu);
     }
     return load_multi_gpu_(model, gpu_backends, n_gpu_layers);
 }
@@ -1054,7 +1179,8 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load_multi_gpu(
 // ------------------------------------------------------------------
 std::unique_ptr<LlamaWeights> LlamaWeights::load(const Model& model,
                                                   ggml_backend_t backend,
-                                                  int n_gpu_layers) {
+                                                  int n_gpu_layers,
+                                                  int experts_on_cpu) {
     if (!supported_arch(model.architecture())) {
         std::fprintf(stderr,
             "[sp-engine] LlamaWeights: unsupported arch '%s'\n",
@@ -1071,7 +1197,10 @@ std::unique_ptr<LlamaWeights> LlamaWeights::load(const Model& model,
             use_mmap = true;
         }
     }
-    return use_mmap ? load_cpu_mmap_(model) : load_backend_offload_(model, backend, n_gpu_layers);
+    // experts_on_cpu only applies to the offload path. The cpu_mmap_ path
+    // already keeps every weight CPU-resident.
+    if (use_mmap) return load_cpu_mmap_(model);
+    return load_backend_offload_(model, backend, n_gpu_layers, experts_on_cpu);
 }
 
 void LlamaWeights::print_summary(std::FILE* f) const {

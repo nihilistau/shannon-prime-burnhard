@@ -64,11 +64,28 @@ static int dequant_expert_slice(const ggml_tensor *tensor, int expert_idx,
     const int64_t blk = (int64_t)traits->blck_size;
     const int64_t bytes_per_expert =
         (int64_t)(tensor->ne[0] * tensor->ne[1] / blk) * (int64_t)traits->type_size;
-    const uint8_t *base = (const uint8_t *)tensor->data;
-    if (!base) {
-        // Tensor data may live on a backend buffer (CUDA/Vulkan). We need
-        // to copy it to host first. ggml_backend_tensor_get into a temp
-        // buffer of size bytes_per_expert at offset expert_idx*bytes.
+
+    // Determine whether tensor->data is host-addressable. For ggml CUDA
+    // backend buffers it's a device pointer (cudaMalloc) — direct host
+    // dereference crashes. The robust check is the buffer's allocator
+    // type: only the CPU backend buffer guarantees host addressability.
+    bool host_addressable = false;
+    ggml_backend_buffer_t buf = tensor->view_src ? tensor->view_src->buffer
+                                                  : tensor->buffer;
+    if (tensor->data && buf) {
+        ggml_backend_buffer_type_t buft = ggml_backend_buffer_get_type(buf);
+        ggml_backend_dev_t dev = ggml_backend_buft_get_device(buft);
+        if (dev && ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU) {
+            host_addressable = true;
+        }
+    }
+
+    if (!host_addressable) {
+        // Pull the slice via the backend's tensor_get (DtoH cudaMemcpy
+        // for CUDA, equivalent for Vulkan/Metal). One round-trip per
+        // (expert_idx, src_tensor) tuple — the per-call LRU cache in
+        // burn_moe_compute amortises this across tokens that select
+        // the same expert.
         std::vector<uint8_t> tmp((size_t)bytes_per_expert);
         ggml_backend_tensor_get(tensor, tmp.data(),
                                  (size_t)expert_idx * (size_t)bytes_per_expert,
@@ -76,6 +93,7 @@ static int dequant_expert_slice(const ggml_tensor *tensor, int expert_idx,
         traits->to_float(tmp.data(), out_fp32, (int64_t)n_elements);
         return 0;
     }
+    const uint8_t *base = (const uint8_t *)tensor->data;
     const uint8_t *expert_bytes = base + (size_t)expert_idx * (size_t)bytes_per_expert;
     traits->to_float(expert_bytes, out_fp32, (int64_t)n_elements);
     return 0;
@@ -139,6 +157,19 @@ struct burn_moe_userdata {
     sp_crt_dispatch_t *crt;   // Optional — when non-null AND crt->crt.gpu_ready,
                               // residue matmul dispatches to GPU dual-ring
                               // (CUDA M1 + Vulkan/L0 M2). Null = host fallback.
+
+    // Per-expert split (set by sp_build_burn_moe_op when the layer's
+    // ffn_*_exps_cpu sub-banks are populated by the loader). When pivot>0:
+    //   * expert ids in [0, pivot) live in the *_cpu tensors below;
+    //     the per-token dispatch reads them via tensor_get against the
+    //     CPU mmap_buf. Local index = orig_id.
+    //   * expert ids in [pivot, n_expert) live in the gate/up/down_exps
+    //     tensors passed via dst->src[3..5] (the GPU-resident sub-bank).
+    //     Local index = orig_id - pivot.
+    int pivot;
+    const ggml_tensor *gate_exps_cpu;
+    const ggml_tensor *up_exps_cpu;
+    const ggml_tensor *down_exps_cpu;
 };
 
 // ----------------------------------------------------------------------------
@@ -283,10 +314,32 @@ static void burn_moe_compute(ggml_tensor *dst, int ith, int nth, void *userdata)
         c.gate.resize(n_embd * n_ff);
         c.up  .resize(n_embd * n_ff);
         c.down.resize(n_embd * n_ff);
-        if (dequant_expert_slice(gate_exps, e, n_embd * n_ff, c.gate.data()) != 0 ||
-            dequant_expert_slice(up_exps,   e, n_embd * n_ff, c.up.data())   != 0 ||
-            dequant_expert_slice(down_exps, e, n_embd * n_ff, c.down.data()) != 0) {
-            std::fprintf(stderr, "[burn_moe] dequant failed for expert %d\n", e);
+
+        // Per-expert split routing. When pivot>0, ids [0, pivot) live in
+        // *_cpu tensors with local idx = orig id. ids [pivot, n_expert)
+        // live in the original gate/up/down_exps tensors with local idx
+        // = orig id - pivot. dequant_expert_slice already handles either
+        // CPU-buffer or backend (GPU) source via ggml_backend_tensor_get,
+        // so the only thing that changes here is which tensor + which
+        // local index to ask for.
+        const ggml_tensor *src_gate = gate_exps;
+        const ggml_tensor *src_up   = up_exps;
+        const ggml_tensor *src_down = down_exps;
+        int local_e = e;
+        if (ud->pivot > 0 && e < ud->pivot && ud->gate_exps_cpu) {
+            src_gate = ud->gate_exps_cpu;
+            src_up   = ud->up_exps_cpu;
+            src_down = ud->down_exps_cpu;
+            local_e  = e;                 // CPU bank: ids [0, pivot)
+        } else if (ud->pivot > 0) {
+            local_e = e - ud->pivot;       // GPU bank: shift down by pivot
+        }
+
+        if (dequant_expert_slice(src_gate, local_e, n_embd * n_ff, c.gate.data()) != 0 ||
+            dequant_expert_slice(src_up,   local_e, n_embd * n_ff, c.up.data())   != 0 ||
+            dequant_expert_slice(src_down, local_e, n_embd * n_ff, c.down.data()) != 0) {
+            std::fprintf(stderr, "[burn_moe] dequant failed for expert %d (local=%d, %s bank)\n",
+                         e, local_e, (e < ud->pivot ? "CPU" : "GPU"));
             cache.pop_back();
             return nullptr;
         }
@@ -328,7 +381,11 @@ extern "C" ggml_tensor *sp_build_burn_moe_op(ggml_context *gctx,
                                               ggml_tensor *gate_exps,
                                               ggml_tensor *up_exps,
                                               ggml_tensor *down_exps,
+                                              ggml_tensor *gate_exps_cpu,
+                                              ggml_tensor *up_exps_cpu,
+                                              ggml_tensor *down_exps_cpu,
                                               int n_expert_used,
+                                              int pivot,
                                               sp_crt_dispatch_t *crt) {
     // User data lives in heap memory tied to the graph's lifetime via a
     // simple leak — gctx doesn't track our allocations. The Engine resets
@@ -337,6 +394,20 @@ extern "C" ggml_tensor *sp_build_burn_moe_op(ggml_context *gctx,
     burn_moe_userdata *ud = new burn_moe_userdata;
     ud->n_expert_used = n_expert_used;
     ud->crt           = crt;
+    ud->pivot         = (gate_exps_cpu && up_exps_cpu && down_exps_cpu) ? pivot : 0;
+    ud->gate_exps_cpu = gate_exps_cpu;
+    ud->up_exps_cpu   = up_exps_cpu;
+    ud->down_exps_cpu = down_exps_cpu;
+    if (ud->pivot > 0) {
+        static int logged_split = 0;
+        if (!logged_split) {
+            std::fprintf(stderr,
+                "[burn_moe] per-expert split ARMED — pivot=%d (CPU bank ids [0,%d), "
+                "GPU bank ids [%d,n_expert))\n",
+                ud->pivot, ud->pivot, ud->pivot);
+            logged_split = 1;
+        }
+    }
     if (crt && crt->crt.gpu_ready) {
         static int logged = 0;
         if (!logged) {

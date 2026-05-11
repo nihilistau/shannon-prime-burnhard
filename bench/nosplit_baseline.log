@@ -1,0 +1,46 @@
+sp-engine.exe : [sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=0 mobile=0
+At line:1 char:42
++ ... StartNew(); & 'C:\Projects\shannon-prime-burnhard\build_beast\bin\sp- ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([sp-mode] LEGAC...ecar=0 mobile=0:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 12287 MiB):
+  Device 0: NVIDIA GeForce RTX 2060, compute capability 7.5, VMM: yes, VRAM: 12287 MiB
+[sp-engine] GPU 0: NVIDIA GeForce RTX 2060 — 10.95 / 12.00 GiB
+[sp-engine] backend: CUDA0 (GPU)
+[sp-engine] LlamaWeights::load: partial offload — layers [0,19) on GPU, [19,40) + non-layer on CPU. ForwardContext 
+scheduler handles cross-backend copies.
+[sp-engine:diag] load_backend_offload_: enter             VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] gguf named tensors: 733, sum(ggml_nbytes)=20175.71 MiB
+[sp-engine:diag]   type=14 count=61 bytes=4802.93 MiB
+[sp-engine:diag]   type=0 count=301 bytes=84.74 MiB
+[sp-engine:diag]   type=12 count=371 bytes=15288.05 MiB
+[sp-engine:diag] after mmap_ctx walk                      VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] before ggml_backend_alloc_ctx_tensors    VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] backend_buf_size=9235.67 MiB (what ggml allocated on backend)
+[sp-engine:diag] after ggml_backend_alloc_ctx_tensors     VRAM free=1.93 GiB used=10.07 GiB / total=12.00 GiB
+[sp-engine] LlamaWeights: offloaded 733 tensors (9235.67 MiB) to backend
+[sp-engine:diag] after all tensor_set copies              VRAM free=1.69 GiB used=10.30 GiB / total=12.00 GiB
+[sp-engine:diag] after mmap ctx + gguf free               VRAM free=1.69 GiB used=10.30 GiB / total=12.00 GiB
+[sp-engine] mRoPE mode=8 sections=[11,11,10,0] n_rot=64
+[sp-engine] ForwardContext: multi-backend scheduler active (GPU + CPU fallback)
+[sp-engine] n_experts_used override: 8 -> 4 (CLI)
+[Shannon-Prime CUDA] Cache allocated:
+  K: 0.15 MB (144 bytes/vec × 80 slots × 14 seq)
+  V: 0.10 MB (98 bytes/vec × 80 slots × 14 seq)
+  Total: 0.26 MB (vs fp16 baseline: 1.09 MB)
+[sp-engine] KvCache::create_gpu: ship path, hd=256 n_layer=40 n_head_kv=2 max_seq=14 k_bytes=144 v_bytes=98
+[sp-engine] shadow (GPU) cache: n_layer=40 n_head_kv=2 head_dim=256 pad_dim=256 max_seq=14 compression=4.23x 
+[GPU-resident]
+[sp-engine] PE: PrimePE-RoPE (composite-tiered, alpha=0.17)
+[sp-engine:diag] bind_cache: is_gpu=1 n_layer=40 n_head_kv=2 head_dim=256 max_seq=14
+[sp-mertens] Initialized for ctx=14: 0 high-risk positions flagged, O(1) risk cache active (0 KB)
+[sp-engine] Cauchy system initialized: mode=2 fixed_n=512 ricci=no mertens=yes params_b=0.00
+[sp-engine] forward_full: graph built — 2994 nodes, 0 leafs
+[sp-engine] forward_full: alloc OK, starting compute...
+Hi\[sp-engine:diag] decode() first call: gpu_cache=1 past_n=2
+ \\ったnf\\ [sp-engine] kv_pos=9  (prompt=2, generated=8)
+[sp-cauchy] mode=dynamic (Ricci+Mertens)  resets=0  last_reset_pos=-999999  mertens_schedule=0/0
+
+=== WALL_MS=35495

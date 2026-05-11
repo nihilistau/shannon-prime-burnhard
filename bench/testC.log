@@ -1,0 +1,4 @@
+Starting sp-engine at 11:24:24.64 
+[sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=1 mobile=0
+Exit code: 1 
+Finished at 12:17:00.08 

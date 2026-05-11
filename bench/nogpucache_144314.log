@@ -1,0 +1,27 @@
+[sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=1 mobile=0
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 12287 MiB):
+  Device 0: NVIDIA GeForce RTX 2060, compute capability 7.5, VMM: yes, VRAM: 12287 MiB
+[sp-engine] GPU 0: NVIDIA GeForce RTX 2060 — 10.95 / 12.00 GiB
+[sp-engine] backend: CUDA0 (GPU)
+[sp-engine] LlamaWeights::load: partial offload — layers [0,20) on GPU, [20,40) + non-layer on CPU. ForwardContext scheduler handles cross-backend copies.
+[sp-engine:diag] load_backend_offload_: enter             VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] gguf named tensors: 733, sum(ggml_nbytes)=20175.71 MiB
+[sp-engine:diag]   type=14 count=61 bytes=4802.93 MiB
+[sp-engine:diag]   type=0 count=301 bytes=84.74 MiB
+[sp-engine:diag]   type=12 count=371 bytes=15288.05 MiB
+[sp-engine:diag] after mmap_ctx walk                      VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] before ggml_backend_alloc_ctx_tensors    VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] backend_buf_size=9752.52 MiB (what ggml allocated on backend)
+[sp-engine:diag] after ggml_backend_alloc_ctx_tensors     VRAM free=1.42 GiB used=10.57 GiB / total=12.00 GiB
+[sp-engine] LlamaWeights: offloaded 733 tensors (9752.52 MiB) to backend
+[sp-engine:diag] after all tensor_set copies              VRAM free=0.00 GiB used=12.00 GiB / total=12.00 GiB
+[sp-engine:diag] after mmap ctx + gguf free               VRAM free=0.00 GiB used=12.00 GiB / total=12.00 GiB
+[sp-engine] mRoPE mode=8 sections=[11,11,10,0] n_rot=64
+[sp-engine] ForwardContext: multi-backend scheduler active (GPU + CPU fallback)
+[sp-engine] shadow cache: n_layer=40 n_head_kv=2 head_dim=256 pad_dim=256 max_seq=16 compression=4.23x
+[sp-engine] PE: PrimePE-RoPE (composite-tiered, alpha=0.17)
+[sp-engine:diag] bind_cache: is_gpu=0 n_layer=40 n_head_kv=2 head_dim=256 max_seq=16
+[sp-mertens] Initialized for ctx=16: 0 high-risk positions flagged, O(1) risk cache active (0 KB)
+[sp-engine] Cauchy system initialized: mode=2 fixed_n=512 ricci=no mertens=yes params_b=0.00
+[sp-engine] forward_full: graph built — 2994 nodes, 0 leafs
+[sp-engine] forward_full: alloc OK, starting compute...

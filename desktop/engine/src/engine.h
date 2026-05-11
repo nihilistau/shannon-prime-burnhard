@@ -110,6 +110,34 @@ struct Config {
     enum class FurnaceDispatch { Off, Audit, On };
     FurnaceDispatch furnace_dispatch = FurnaceDispatch::Off;
 
+    // MoE expert dispatch knobs.
+    //
+    //   n_experts_used  — top-K override. 0 = use the GGUF's
+    //                     `expert_used_count` (e.g. 8 for qwen35moe-A3B).
+    //                     Lower values cut MoE FFN compute roughly
+    //                     proportionally, at a quality cost.
+    //
+    //   experts_on_cpu  — number of expert IDs (per MoE layer) whose
+    //                     bundled weight slab stays on the CPU backend
+    //                     instead of moving to the GPU with its layer.
+    //                     0 = no split (legacy behaviour: all experts
+    //                     follow their layer). N>0 splits the
+    //                     ffn_*_exps tensor along the expert axis,
+    //                     keeping experts [0, N) CPU-resident and
+    //                     [N, n_expert) on the layer's backend. The MoE
+    //                     FFN dispatch runs two parallel mul_mat_id ops
+    //                     and sums the outputs, so per-token routing
+    //                     across the GPU/CPU split is automatic.
+    int  n_experts_used = 0;
+    int  experts_on_cpu = 0;
+
+    // SP custom KV cache GPU residency. true (default) = compressed
+    // skeleton + residual buffers live in VRAM; decode reads via
+    // read_gpu (no host roundtrip per layer per token). false = host
+    // buffers + tensor_set per token. Env override SHANNON_PRIME_GPU_CACHE
+    // is read at engine init for backwards compat.
+    bool gpu_cache = true;
+
     // Positional-encoding mode.
     // Default is PrimePe (lattice-aligned RoPE frequencies) — proven −0.6%
     // to −0.8% PPL improvement across architectures at zero runtime cost.

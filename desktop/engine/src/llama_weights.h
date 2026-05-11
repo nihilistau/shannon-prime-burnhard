@@ -116,9 +116,22 @@ struct LlamaLayer {
     ggml_tensor* ffn_gate_inp       = nullptr;  // "blk.N.ffn_gate_inp.weight"
     // Expert bank (stacked along the last dim): 3D tensors of shape
     // (n_ff_expert, n_embd, n_expert) for up; (n_embd, n_ff_expert, n_expert) for down.
+    // When experts_on_cpu>0, this slab holds the GPU-resident sub-bank
+    // (experts [pivot, n_expert)). The CPU-resident sub-bank lives in
+    // the *_exps_cpu slots below; pivot itself is in n_experts_cpu.
     ggml_tensor* ffn_gate_exps      = nullptr;
     ggml_tensor* ffn_up_exps        = nullptr;
     ggml_tensor* ffn_down_exps      = nullptr;
+    // CPU-resident sub-bank (experts [0, n_experts_cpu)). Null when
+    // experts_on_cpu=0 (all experts follow the layer's home backend).
+    ggml_tensor* ffn_gate_exps_cpu  = nullptr;
+    ggml_tensor* ffn_up_exps_cpu    = nullptr;
+    ggml_tensor* ffn_down_exps_cpu  = nullptr;
+    // Number of experts kept CPU-side. 0 = no split. Local IDs in the
+    // CPU bank are [0, n_experts_cpu); local IDs in the GPU bank above
+    // are (orig_id - n_experts_cpu). The MoE FFN dispatch (build_moe_ffn
+    // / BURN_MOE op) sees both pointers and the pivot.
+    int          n_experts_cpu      = 0;
     // Shared expert (runs for every token, gated by a sigmoid scalar).
     ggml_tensor* ffn_gate_inp_shexp = nullptr;  // "blk.N.ffn_gate_inp_shexp.weight"  (n_embd,)
     ggml_tensor* ffn_gate_shexp     = nullptr;
@@ -167,9 +180,13 @@ public:
     //
     // Returns nullptr on unsupported arch, missing required tensors,
     // or I/O error.
+    // experts_on_cpu: number of MoE expert IDs (per layer) whose bundled
+    // weight slab stays CPU-resident even when the layer itself is on GPU.
+    // 0 = legacy behaviour (whole expert bank follows its layer).
     static std::unique_ptr<LlamaWeights> load(const Model& model,
                                                ggml_backend_t backend = nullptr,
-                                               int n_gpu_layers = N_GPU_LAYERS_ALL);
+                                               int n_gpu_layers = N_GPU_LAYERS_ALL,
+                                               int experts_on_cpu = 0);
 
     // Multi-GPU variant: distribute layers across multiple GPU backends.
     // Layer L → backends[L * n_gpus / n_layer]. Non-layer tensors → backends[0]
@@ -178,7 +195,8 @@ public:
     static std::unique_ptr<LlamaWeights> load_multi_gpu(
             const Model& model,
             const std::vector<ggml_backend_t>& gpu_backends,
-            int n_gpu_layers = N_GPU_LAYERS_ALL);
+            int n_gpu_layers = N_GPU_LAYERS_ALL,
+            int experts_on_cpu = 0);
 
     ~LlamaWeights();
     LlamaWeights(const LlamaWeights&) = delete;
@@ -213,7 +231,7 @@ private:
     // reach private members without a friend declaration).
     static bool                             bind_tensors_(LlamaWeights& w, ggml_context* tctx, const Model& model);
     static std::unique_ptr<LlamaWeights>    load_cpu_mmap_(const Model& model);
-    static std::unique_ptr<LlamaWeights>    load_backend_offload_(const Model& model, ggml_backend_t backend, int n_gpu_layers);
+    static std::unique_ptr<LlamaWeights>    load_backend_offload_(const Model& model, ggml_backend_t backend, int n_gpu_layers, int experts_on_cpu = 0);
     static std::unique_ptr<LlamaWeights>    load_multi_gpu_(const Model& model,
                                                              const std::vector<ggml_backend_t>& gpu_backends,
                                                              int n_gpu_layers);

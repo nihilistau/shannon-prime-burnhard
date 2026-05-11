@@ -359,6 +359,24 @@ static int parse_config_flag(sp::engine::Config& cfg, const char* a, const char*
     if ((a_eq("--n-gpu-layers") || a_eq("-ngl")) && has_next) { cfg.n_gpu_layers = std::atoi(next); return 2; }
     if (a_eq("--n-gpus") && has_next) { cfg.n_gpus = std::atoi(next); return 2; }
 
+    // -- MoE expert dispatch --
+    // Override top-K (number of experts evaluated per token). 0 = use the
+    // GGUF's expert_used_count. Lower values cut MoE FFN compute roughly
+    // proportionally, with a quality cost. Env SP_N_EXPERTS_USED still works.
+    if (a_eq("--n-experts-used") && has_next) { cfg.n_experts_used = std::atoi(next); return 2; }
+    // Number of expert IDs (per MoE layer) whose bundled weight slab stays
+    // on the CPU backend instead of moving to the GPU with its layer. The
+    // remaining (n_expert - N) experts go to the GPU. Lets a 21 GB MoE run
+    // sensibly on a 12 GB card without VRAM spill. 0 = no split.
+    if (a_eq("--experts-on-cpu") && has_next) { cfg.experts_on_cpu = std::atoi(next); return 2; }
+
+    // -- KV cache residency --
+    // Whether the SP custom KV cache lives in VRAM (decode reads via
+    // read_gpu, no host roundtrip per layer per token) or in host memory.
+    // Defaults to true. Env SHANNON_PRIME_GPU_CACHE=0 overrides.
+    if (a_eq("--gpu-cache"))    { cfg.gpu_cache = true;  return 1; }
+    if (a_eq("--no-gpu-cache")) { cfg.gpu_cache = false; return 1; }
+
     // -- Cache persistence --
     if (a_eq("--save-cache") && has_next) { cfg.save_cache_path = next; return 2; }
     if (a_eq("--load-cache") && has_next) { cfg.load_cache_path = next; return 2; }
@@ -1182,9 +1200,9 @@ int main(int argc, char** argv) {
 
         std::unique_ptr<sp::engine::LlamaWeights> W;
         if (!mgpu_chat.backends.empty()) {
-            W = sp::engine::LlamaWeights::load_multi_gpu(*m, mgpu_chat.backends, ngl);
+            W = sp::engine::LlamaWeights::load_multi_gpu(*m, mgpu_chat.backends, ngl, cc.experts_on_cpu);
         } else {
-            W = sp::engine::LlamaWeights::load(*m, bk, ngl);
+            W = sp::engine::LlamaWeights::load(*m, bk, ngl, cc.experts_on_cpu);
         }
         if (!tk || !W) return 3;
 
@@ -1229,6 +1247,11 @@ int main(int argc, char** argv) {
                             : 2;  // FD::On
             if (mode != 0) fc->set_furnace_dispatch(mode);
         }
+
+        // CLI-driven top-K override (--n-experts-used N). Wins over
+        // SP_N_EXPERTS_USED env (which is applied during ForwardContext
+        // create) and over the GGUF's expert_used_count.
+        if (cc.n_experts_used > 0) fc->set_n_experts_used(cc.n_experts_used);
 
 #if defined(SP_ENGINE_WITH_BEAST)
         // Beast Canyon orchestrator + Furnace.  When --beast <gguf> is set,

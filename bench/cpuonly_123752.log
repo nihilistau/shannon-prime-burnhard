@@ -1,0 +1,2 @@
+[sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=1 mobile=0
+[sp-engine] mRoPE mode=8 sections=[11,11,10,0] n_rot=64

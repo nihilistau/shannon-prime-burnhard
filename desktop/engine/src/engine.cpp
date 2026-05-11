@@ -183,10 +183,12 @@ int Engine::load(const Config& cfg) {
     // ── Weight loading ──────────────────────────────────────────────
     if (multi_gpu) {
         impl_->weights = LlamaWeights::load_multi_gpu(
-            *impl_->model, impl_->gpu_backends, n_gpu_layers);
+            *impl_->model, impl_->gpu_backends, n_gpu_layers,
+            cfg.experts_on_cpu);
     } else {
         impl_->weights = LlamaWeights::load(
-            *impl_->model, impl_->backend, n_gpu_layers);
+            *impl_->model, impl_->backend, n_gpu_layers,
+            cfg.experts_on_cpu);
     }
     if (!impl_->weights) return 5;
 

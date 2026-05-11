@@ -181,6 +181,12 @@ public:
     // Set after create() and before forward/prefill/decode.
     void set_furnace_dispatch(int mode);
 
+    // Override the top-K experts evaluated per token (default = GGUF's
+    // expert_used_count). Clamped to [1, n_expert]. Lower values cut MoE
+    // FFN compute roughly proportionally, with a quality cost. No-op if
+    // the model is non-MoE. Set before any forward call.
+    void set_n_experts_used(int k);
+
     // Hparams the caller set at create(); exposed for diagnostics.
     int n_embd()  const;
     int n_vocab() const;

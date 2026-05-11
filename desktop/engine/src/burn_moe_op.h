@@ -34,14 +34,28 @@ extern "C" {
 // Build the BURN_MOE custom op into the graph. All `ggml_tensor *` args
 // follow ggml's normal lifetime — owned by the caller's gctx. n_expert_used
 // is the top-K selection count (e.g. 8 for Qwen3.6 35B-A3B).
+// gate/up/down_exps   — GPU-resident sub-bank covering experts [pivot, n_expert).
+//                       Pass the full bundled tensor when no split is active
+//                       (pivot=0); BURN_MOE then iterates over all n_expert.
+// gate/up/down_exps_cpu — CPU-resident sub-bank covering experts [0, pivot).
+//                       Pass nullptr when no split is active. When non-null,
+//                       BURN_MOE dispatches per-expert: ids < pivot go to the
+//                       CPU bank (host residue matmul, hot path stays on host),
+//                       ids >= pivot go to the GPU bank (residue dispatched
+//                       through `crt` to dual-ring when armed).
+// pivot              — number of experts kept CPU-side. 0 = no split.
 struct ggml_tensor *sp_build_burn_moe_op(struct ggml_context *gctx,
-                                          struct ggml_tensor *cur,        // [n_embd, n_tokens]
-                                          struct ggml_tensor *selected,   // [k, n_tokens] I32
-                                          struct ggml_tensor *weights,    // [1, k, n_tokens] f32
-                                          struct ggml_tensor *gate_exps,  // [n_embd, n_ff, n_expert]
-                                          struct ggml_tensor *up_exps,    // [n_embd, n_ff, n_expert]
-                                          struct ggml_tensor *down_exps,  // [n_ff, n_embd, n_expert]
+                                          struct ggml_tensor *cur,            // [n_embd, n_tokens]
+                                          struct ggml_tensor *selected,       // [k, n_tokens] I32
+                                          struct ggml_tensor *weights,        // [1, k, n_tokens] f32
+                                          struct ggml_tensor *gate_exps,      // [n_embd, n_ff, n_expert - pivot]
+                                          struct ggml_tensor *up_exps,        // [n_embd, n_ff, n_expert - pivot]
+                                          struct ggml_tensor *down_exps,      // [n_ff, n_embd, n_expert - pivot]
+                                          struct ggml_tensor *gate_exps_cpu,  // [n_embd, n_ff, pivot] or NULL
+                                          struct ggml_tensor *up_exps_cpu,    // [n_embd, n_ff, pivot] or NULL
+                                          struct ggml_tensor *down_exps_cpu,  // [n_ff, n_embd, pivot] or NULL
                                           int n_expert_used,
+                                          int pivot,
                                           sp_crt_dispatch_t *crt);   // optional, NULL=host fallback
 
 #ifdef __cplusplus
