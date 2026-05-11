@@ -282,7 +282,14 @@ int burnhard_reservoir_init_auto(burnhard_reservoir_t *r,
             "[burnhard] dual-chamber mode armed (secondary not yet bound — "
             "scratch file allocation pending)\n");
     } else if (r->primary.tier == BURNHARD_TIER_OPTANE) {
-        r->mode = 2;  // OPTANE_ONLY
+        // Fix: Detect if we have a 16GB Optane + NVMe fallback available (e.g., 32GB NVMe)
+        if (r->nvme_free_bytes >= (size_t)16 * 1024 * 1024 * 1024) {
+            r->mode = 1;  // OPTANE_NVME
+            fprintf(stderr,
+                "[burnhard] hybrid mode armed: primary=OPTANE, secondary=NVME scratch pending\n");
+        } else {
+            r->mode = 2;  // OPTANE_ONLY
+        }
     } else {
         r->mode = 3;  // NVME_FALLBACK
     }
