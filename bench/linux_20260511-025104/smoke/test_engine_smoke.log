@@ -1,0 +1,6 @@
+[sp-engine] Engine::load: no model_path — scaffold mode, nothing loaded.
+[sp-engine] Engine::generate: not loaded
+[sp-engine] Engine::perplexity: not loaded
+engine_smoke: no SP_ENGINE_TEST_MODEL, scaffold-only pass.
+engine_smoke: OK
+exit=0 wall=0.00540566s

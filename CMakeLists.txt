@@ -360,15 +360,21 @@ endif()
 if(SP_BUILD_TESTS)
     enable_testing()
     # Core math tests
+    # On non-MSVC toolchains libm must be linked explicitly for cosf/sinf/etc.
+    if(NOT MSVC)
+        set(_SP_TEST_MATH_LIB m)
+    else()
+        set(_SP_TEST_MATH_LIB "")
+    endif()
     if(EXISTS ${CMAKE_SOURCE_DIR}/tests/core/test_core.c)
         add_executable(test_core tests/core/test_core.c)
-        target_link_libraries(test_core PRIVATE shannon_prime_core)
+        target_link_libraries(test_core PRIVATE shannon_prime_core ${_SP_TEST_MATH_LIB})
         add_test(NAME core COMMAND test_core)
     endif()
     # Session-1 BurnHard Shredder + Garner round-trip verifier.
     if(EXISTS ${CMAKE_SOURCE_DIR}/tools/shred_verify.c)
         add_executable(shred_verify tools/shred_verify.c)
-        target_link_libraries(shred_verify PRIVATE shannon_prime_core)
+        target_link_libraries(shred_verify PRIVATE shannon_prime_core ${_SP_TEST_MATH_LIB})
         target_include_directories(shred_verify PRIVATE
             ${CMAKE_SOURCE_DIR}/core/include)
         if(MSVC)
@@ -382,13 +388,13 @@ if(SP_BUILD_TESTS)
     # stock fp32 matmul to within 1e-5 relative error per cell.
     if(EXISTS ${CMAKE_SOURCE_DIR}/tools/residue_matmul_verify.c)
         add_executable(residue_matmul_verify tools/residue_matmul_verify.c)
-        target_link_libraries(residue_matmul_verify PRIVATE shannon_prime_core)
+        target_link_libraries(residue_matmul_verify PRIVATE shannon_prime_core ${_SP_TEST_MATH_LIB})
         target_include_directories(residue_matmul_verify PRIVATE
             ${CMAKE_SOURCE_DIR}/core/include)
         if(MSVC)
             target_compile_options(residue_matmul_verify PRIVATE /arch:AVX512)
         else()
-            target_compile_options(residue_matmul_verify PRIVATE -mavx512f -lm)
+            target_compile_options(residue_matmul_verify PRIVATE -mavx512f)
         endif()
         add_test(NAME residue_matmul_verify COMMAND residue_matmul_verify)
     endif()
@@ -397,15 +403,22 @@ if(SP_BUILD_TESTS)
     # the Q4_K GGUF). The last math gate before the chat-path wiring.
     if(EXISTS ${CMAKE_SOURCE_DIR}/tools/burn_moe_verify.c)
         add_executable(burn_moe_verify tools/burn_moe_verify.c)
-        target_link_libraries(burn_moe_verify PRIVATE shannon_prime_core ggml)
+        target_link_libraries(burn_moe_verify PRIVATE shannon_prime_core ggml ${_SP_TEST_MATH_LIB})
         target_include_directories(burn_moe_verify PRIVATE
             ${CMAKE_SOURCE_DIR}/core/include
             ${CMAKE_SOURCE_DIR}/vendor/ggml/include)
         if(MSVC)
             target_compile_options(burn_moe_verify PRIVATE /arch:AVX512)
         else()
-            target_compile_options(burn_moe_verify PRIVATE -mavx512f -lm)
+            target_compile_options(burn_moe_verify PRIVATE -mavx512f)
         endif()
+    endif()
+    # Desktop engine tests + bench (test_engine_smoke, test_sp_quant_q5k,
+    # test_sp_kernels, test_disk_cache_roundtrip, test_gguf_loader,
+    # bench_disk_partial). These depend on sp_engine, so they're inside
+    # SP_BUILD_TESTS but require the engine library.
+    if(SP_BUILD_CLI AND EXISTS ${CMAKE_SOURCE_DIR}/tests/desktop/CMakeLists.txt)
+        add_subdirectory(tests/desktop)
     endif()
 endif()
 

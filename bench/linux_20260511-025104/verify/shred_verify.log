@@ -1,0 +1,9 @@
+[shred_verify] BurnHard Shredder + Garner round-trip
+[shred_verify] M1=2147483647  M2=2147483629  M1^-1 mod M2=2028178983  scale=268435456
+[shred_verify] safe q_max for inner_dim=8192: 16777215  (~1.56% of M1/2)
+[shred_verify] integer round-trip: range=±2^28  step=2^14  0 errors  PASS
+[shred_verify] synthetic: n=4096  scale=268435456  max_abs=0.000e+00  mse=0.000e+00  PASS
+[shred_verify] DC bias check: n=65536  bias=0.000e+00  PASS
+[shred_verify] bench: 4.44 ns/element  (0.84 GB/s fp32 read, n=1048576 × 16 iter)
+[shred_verify] === ALL CHECKS PASS ===
+exit=0 wall=0.122524s

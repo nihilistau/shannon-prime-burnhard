@@ -1,0 +1,6 @@
+test_sp_quant_q5k:
+  blocks      = 16 (4096 elements)
+  mismatches  = 0 / 4096
+  max abs err = 0
+  result      = PASS (bit-exact)
+exit=0 wall=0.00681543s

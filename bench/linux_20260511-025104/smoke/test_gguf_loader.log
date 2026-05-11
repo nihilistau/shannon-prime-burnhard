@@ -1,0 +1,2 @@
+test_gguf_loader: no SP_ENGINE_TEST_MODEL set, skipping.
+exit=0 wall=0.00541854s
