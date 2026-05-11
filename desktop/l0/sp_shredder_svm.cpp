@@ -16,13 +16,16 @@ typedef struct {
     void* svm_buffer;
     ze_command_queue_handle_t cmd_queue;
     ze_command_list_handle_t cmd_list;
+    ze_kernel_handle_t crt_kernel;
+    ze_module_handle_t module;
 } sp_l0_svm_state_t;
 
 static sp_l0_svm_state_t g_svm_state = {0};
 
-extern "C" int sp_shredder_svm_init(ze_context_handle_t ctx, ze_device_handle_t dev) {
+extern "C" int sp_shredder_svm_init(ze_context_handle_t ctx, ze_device_handle_t dev, ze_module_handle_t mod) {
     g_svm_state.context = ctx;
     g_svm_state.device = dev;
+    g_svm_state.module = mod;
 
     ze_device_mem_alloc_desc_t dev_desc = {
         ZE_STRUCTURE_TYPE_DEVICE_MEM_ALLOC_DESC,
@@ -53,6 +56,19 @@ extern "C" int sp_shredder_svm_init(ze_context_handle_t ctx, ze_device_handle_t 
         return -1;
     }
 
+    // Initialize the CRT kernel from the loaded module
+    ze_kernel_desc_t kernel_desc = {
+        ZE_STRUCTURE_TYPE_KERNEL_DESC,
+        nullptr,
+        0,
+        "sp_crt_residue_dispatch"
+    };
+    status = zeKernelCreate(g_svm_state.module, &kernel_desc, &g_svm_state.crt_kernel);
+    if (status != ZE_RESULT_SUCCESS) {
+        fprintf(stderr, "[sp_shredder_svm] Failed to create CRT kernel handle.\n");
+        return -1;
+    }
+
     fprintf(stderr, "[sp_shredder_svm] 24MB SVM allocated at %p. memcpy eliminated.\n", g_svm_state.svm_buffer);
     return 0;
 }
@@ -68,10 +84,10 @@ extern "C" int sp_shredder_dispatch_crt_residue(uint32_t expert_idx, size_t resi
     // Apply hetero barrier to ensure AVX-512 writes are visible to iGPU
     zeCommandListAppendBarrier(g_svm_state.cmd_list, nullptr, 0, nullptr);
 
-    // Note: Assuming `g_crt_kernel` is bound downstream. We instruct the command list
-    // to compute directly over `g_svm_state.svm_buffer`.
+    // Set SVM pointer as kernel argument and launch
+    zeKernelSetArgumentValue(g_svm_state.crt_kernel, 0, sizeof(void*), &g_svm_state.svm_buffer);
     ze_group_count_t dispatch_traits = { (uint32_t)(residue_size / 256), 1, 1 };
-    // zeCommandListAppendLaunchKernel(g_svm_state.cmd_list, g_crt_kernel, &dispatch_traits, nullptr, 0, nullptr);
+    zeCommandListAppendLaunchKernel(g_svm_state.cmd_list, g_svm_state.crt_kernel, &dispatch_traits, nullptr, 0, nullptr);
 
     // Sync queued here pending completion
     return 0;
