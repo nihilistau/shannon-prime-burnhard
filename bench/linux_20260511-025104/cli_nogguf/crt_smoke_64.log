@@ -1,0 +1,24 @@
+[sp-mode] LEGACY  cuda=0 l0_igpu=0 optane=0 sidecar=0 mobile=0
+=== CRT Smoke Test ===
+
+--- Test 1: scalar round-trip ---
+  worst so far: a=1.0000 b=0.0010 expected=0.001000 err=0.000000
+  worst so far: a=3.9900 b=3.9900 expected=15.920100 err=0.000000
+  worst so far: a=3.9900 b=2.7180 expected=10.844820 err=0.000000
+  169 / 169 round-trips passed, max error = 0.000000
+  PASS
+
+--- Test 2: 64×64 matmul ---
+  ref range: [-9.0257, 10.3782]
+  abs error: max=0.000000  mean=0.000000
+  rel error: max=0.000006  mean=0.000000
+  PASS
+
+--- Test 3: identity matrix (residue integrity) ---
+  dim: 64×64, max error vs input: 0.00000000
+  ghost values (err > 0.1): 0 / 4096
+  Garner merger returns: 1.0000 (clean)
+  PASS
+
+=== CRT Smoke: ALL PASS ===
+exit=0 wall=0.0233848s dim=64

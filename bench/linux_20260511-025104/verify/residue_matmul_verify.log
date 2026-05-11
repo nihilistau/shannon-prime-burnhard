@@ -1,0 +1,14 @@
+[residue_matmul_verify] BurnHard residue matmul vs stock fp32
+[residue_matmul_verify] M1=2147483647  M2=2147483629  M_PROD/2=2305842987738857481 (~2^60)
+[tiny] M=8 K=8 N=8  q_max=536870909  ref=0.0ms  res=340.6ms
+        max_abs=0.000e+00  nrmse=0.000e+00  peak|C|=2.234e+00  (max_rel=0.000e+00 — informational)  PASS
+[small] M=64 K=128 N=64  q_max=134217727  ref=0.6ms  res=88.7ms
+        max_abs=0.000e+00  nrmse=0.000e+00  peak|C|=1.594e+01  (max_rel=0.000e+00 — informational)  PASS
+[medium] M=256 K=512 N=256  q_max=67108863  ref=45.2ms  res=82.9ms
+        max_abs=0.000e+00  nrmse=0.000e+00  peak|C|=3.341e+01  (max_rel=0.000e+00 — informational)  PASS
+[hidden] M=2048 K=2048 N=2048  q_max=33554431  ref=84614.2ms  res=85549.4ms
+        max_abs=0.000e+00  nrmse=0.000e+00  peak|C|=8.555e+01  (max_rel=0.000e+00 — informational)  PASS
+[stress] M=256 K=8192 N=256  q_max=16777215  ref=1783.4ms  res=1887.2ms
+        max_abs=1.526e-05  nrmse=1.127e-08  peak|C|=1.738e+02  (max_rel=4.990e-04 — informational)  PASS
+[residue_matmul_verify] === ALL TRIALS PASS ===
+exit=0 wall=175.027s

@@ -1,0 +1,16 @@
+[sp-engine] cache saved: hierarchical n_pos=16 prefix=/tmp/sp_engine_disk_test/kv (uncalibrated)
+[sp-engine] cache loaded: hierarchical n_pos=16 prefix=/tmp/sp_engine_disk_test/kv
+[sp-disk] model hash mismatch: disk=deadbeefcafebabe expected=deadbeefcafebabf
+[sp-disk] refusing to load: hash mismatch is fatal (set SP_DISK_HASH_STRICT=0 to load anyway)
+[sp-disk] model hash mismatch: disk=deadbeefcafebabe expected=deadbeefcafebabf
+[sp-disk] SP_DISK_HASH_STRICT=0 — loading anyway
+[sp-disk] model hash mismatch: disk=deadbeefcafebabe expected=deadbeefcafebabf
+[sp-disk] SP_DISK_HASH_STRICT=0 — loading anyway
+[sp-disk] model hash mismatch: disk=deadbeefcafebabe expected=deadbeefcafebabf
+[sp-disk] SP_DISK_HASH_STRICT=0 — loading anyway
+[sp-disk] model hash mismatch: disk=deadbeefcafebabe expected=deadbeefcafebabf
+[sp-disk] SP_DISK_HASH_STRICT=0 — loading anyway
+[sp-engine] cache loaded: hierarchical n_pos=16 prefix=/tmp/sp_engine_disk_test/kv
+[sp-engine] cache loaded (partial): hierarchical n_pos=16 max_skel_bands=1 prefix=/tmp/sp_engine_disk_test/kv
+disk_cache_roundtrip: OK (n_layer=2, n_head_kv=4, head_dim=128, n_pos=16)
+exit=0 wall=0.0813885s

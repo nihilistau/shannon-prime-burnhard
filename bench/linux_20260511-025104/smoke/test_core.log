@@ -1,0 +1,102 @@
+Shannon-Prime Core Math Validation
+==================================
+
+== VHT2 Round-Trip ==
+  [[32mPASS[0m] VHT2 round-trip hd=32: max_err=1.79e-07 (need <1e-5)
+  [[32mPASS[0m] VHT2 round-trip hd=64: max_err=4.17e-07 (need <1e-5)
+  [[32mPASS[0m] VHT2 round-trip hd=128: max_err=4.17e-07 (need <1e-5)
+  [[32mPASS[0m] VHT2 round-trip hd=256: max_err=5.36e-07 (need <1e-5)
+
+== Möbius Function ==
+  [[32mPASS[0m] μ(1) = 1
+  [[32mPASS[0m] μ(2) = -1
+  [[32mPASS[0m] μ(3) = -1
+  [[32mPASS[0m] μ(4) = 0 (4=2², not squarefree)
+  [[32mPASS[0m] μ(5) = -1
+  [[32mPASS[0m] μ(6) = 1 (6=2×3, two distinct primes)
+  [[32mPASS[0m] μ(8) = 0 (8=2³, not squarefree)
+  [[32mPASS[0m] μ(30) = -1 (30=2×3×5, three distinct primes)
+  [[32mPASS[0m] Squarefree count matches
+
+== Möbius Reorder Round-Trip ==
+  [[32mPASS[0m] Möbius roundtrip hd=64: max_err=0.00e+00
+  [[32mPASS[0m] Möbius roundtrip hd=128: max_err=0.00e+00
+
+== Banded Quantization ==
+  [[32mPASS[0m] 5/5/4/3 (ship default): avg_corr=0.9937, compression=3.4× (76 bytes/vec)
+  [[32mPASS[0m] 5/4/4/3: avg_corr=0.9930, compression=3.6× (72 bytes/vec)
+  [[32mPASS[0m] 4/4/4/3: avg_corr=0.9921, compression=3.8× (68 bytes/vec)
+  [[32mPASS[0m] 4/3/3/3: avg_corr=0.9853, compression=4.3× (60 bytes/vec)
+  [[32mPASS[0m] 3/3/3/3 (floor): avg_corr=0.9822, compression=4.6× (56 bytes/vec)
+
+== K/V Spectral Asymmetry ==
+  [[32mPASS[0m] K first-half energy: 80.3% (expect >60%)
+  [[32mPASS[0m] V first-half energy: 57.7% (expect ~50%, uniform)
+
+== Vilenkin Round-Trip ==
+  [[32mPASS[0m] Vilenkin 2-prime (N=6, hd=6): max_err=1.19e-07
+  [[32mPASS[0m] Vilenkin 3-prime (N=30, hd=30): max_err=5.96e-07
+  [[32mPASS[0m] Vilenkin 4-prime (N=210, hd=64): max_err=1.64e-06
+
+== Full VHT2 Pipeline ==
+  [[32mPASS[0m] K full pipeline: correlation=0.9937 (need >0.990)
+  [[32mPASS[0m] V full pipeline: correlation=0.9697 (need >0.980)
+  Compression ratio: 4.1×
+  K: 76 bytes/vec (from 256)
+  V: 50 bytes/vec (from 256)
+
+== Möbius Quality Improvement ==
+  [[32mPASS[0m] Plain: 0.9903, Möbius: 0.9943 (Δ=+0.0039)
+
+== Compression Ratios ==
+  [[32mPASS[0m] hd=128 total compression: 4.1× (paper: 3.4–3.8×)
+  [[32mPASS[0m] hd=64 total compression: 3.8×
+
+== Vilenkin Successive Extraction ==
+  [[32mPASS[0m] After P1: 99.9% energy retained, 5 coefficients (of 6)
+
+== Banded Quant Non-Divisible (10 bands @ pad_dim=154) ==
+  [[32mPASS[0m] head_dim stored: 154 (expect 154)
+  [[32mPASS[0m] band_size (typical): 15 (expect 15)
+  [[32mPASS[0m] last band offset=135 size=19 (expect 135/19)
+  [[32mPASS[0m] Round-trip corr: 0.9898 (need >0.900 for 3-bit × 10)
+  [[32mPASS[0m] Tail coeffs recovered (|mean|=0.4347, must be > 0)
+
+== Banded Quant Ternary (5/5/4/1.58 noise-tail) ==
+  [[32mPASS[0m] total_bytes=40 (expected 40 for 5/5/4/[2-bpp ternary])
+  [[32mPASS[0m] ternary_band_mask=0x8 (expect 0x8)
+  [[32mPASS[0m] band 3 reconstruction in {-amax, 0, +amax}: pos=5 zero=7 neg=4 other=0
+  [[32mPASS[0m] band 3 corr after ternary round-trip: 0.9199 (need > 0.7)
+  [[32mPASS[0m] bands 0-2 corr (5/5/4 path unchanged): 0.9992 (need > 0.95)
+
+== Banded Quant Partial Read ==
+  [[32mPASS[0m] max_bands=0: corr=0.0000 (all-zero output, corr undefined ≈ 0)
+  [[32mPASS[0m] max_bands=1: corr=0.3003 (rising)
+  [[32mPASS[0m] max_bands=2: corr=0.8579 (rising)
+  [[32mPASS[0m] max_bands=3: corr=0.8836 (rising)
+  [[32mPASS[0m] max_bands=4: corr=0.9884 (rising)
+  [[32mPASS[0m] max_bands == n_bands matches sp_band_dequantize byte-for-byte
+  [[32mPASS[0m] max_bands == 0 produces all-zero output
+  [[32mPASS[0m] max_bands < 0 clamps to 0 (all-zero output)
+  [[32mPASS[0m] max_bands > n_bands clamps to n_bands (full output)
+
+== PrimePE freq factors ==
+  [[32mPASS[0m] n_freqs=0 returns NULL
+  [[32mPASS[0m] n_freqs=-4 returns NULL
+  [[32mPASS[0m] alpha<0 returns NULL
+  [[32mPASS[0m] alpha=0 returns non-NULL
+  [[32mPASS[0m] alpha=0 returns all 1.0 (identity / standard RoPE)
+  [[32mPASS[0m] alpha<1e-6 returns non-NULL (epsilon path)
+  [[32mPASS[0m] alpha<1e-6 also returns identity
+  [[32mPASS[0m] alpha=0.15 produces finite positive factors
+  [[32mPASS[0m] alpha=0.17 produces finite positive factors
+  [[32mPASS[0m] alpha=0.20 produces finite positive factors
+  [[32mPASS[0m] alpha=0.22 produces finite positive factors
+  [[32mPASS[0m] two calls with identical args produce byte-equal output
+  [[32mPASS[0m] alpha=0.17 low-i factors (i<8) bounded ⊂ [0.5, 2.0]
+  [[32mPASS[0m] alpha=0.17 produces different factors than alpha=0 (lattice blend active)
+  [[32mPASS[0m] 5 freq_base values (10k..5M) all produce finite factors
+
+==================================
+Results: 65/65 passed
+exit=0 wall=0.0118341s
