@@ -214,6 +214,13 @@ typedef struct {
     bool         dax_enabled;         // True if DAX was detected
     bool         is_moe;              // True if model has expert tensors
     sp_optane_tier_t tier;            // Storage tier — drives prefetch policy
+
+    // --- O(1) tensor lookup (built lazily at the end of sp_optane_init,
+    //     freed in sp_optane_free). Replaces the linear strcmp scan in
+    //     sp_optane_find_tensor — measured ~22x speedup vs the ~2.5 us
+    //     baseline at 30k tensors (see core/src/sp_pointer_view.c for
+    //     the standalone variant + bench). Opaque to callers.
+    void        *find_index;
 } sp_optane_reservoir_t;
 
 // ============================================================================

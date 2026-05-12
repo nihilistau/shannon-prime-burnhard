@@ -5,3 +5,7 @@ build/
 *.a
 
 build*
+
+# Local-only LM Studio API token (paired clientIdentifier:passkey).
+# Used by the shannon-prime-lmstudio-server MCP. Never committed.
+lmstudio-sp-token.txt
