@@ -1032,38 +1032,72 @@ int sp_beast_moe_forward(sp_beast_engine_t *engine,
     float *thread_out = (float *)calloc((size_t)n_threads * hidden_dim, sizeof(float));
     if (!thread_out) return -1;
 
+    // Two-phase MoE dispatch — uses ALL n_threads cores instead of just
+    // n_selected. Previous design (single coarse parallel-for over experts)
+    // left 4 cores idle at top-K=4 on an 8-core box; each outer thread did
+    // gate + up + silu + down serially. New design:
+    //   Phase 1: 2K work units (K experts × {gate, up}) parallelised
+    //            across up to 8 threads. Each thread runs one matvec
+    //            serially via beast_matvec_serial — no nested OMP needed.
+    //   Phase 2: K work units (silu + down + score-weighted accumulate)
+    //            parallelised across K threads.
+    // Critical path: 1 matvec (phase 1) + 1 matvec + silu (phase 2)
+    // ≈ 2 matvec times vs the old 3. Memory traffic unchanged.
+    const int K = r->n_selected;
+    float *gate_bufs = (float *)malloc((size_t)K * ff_floats * sizeof(float));
+    float *up_bufs   = (float *)malloc((size_t)K * ff_floats * sizeof(float));
+    float *down_outs = (float *)malloc((size_t)K * hidden_dim * sizeof(float));
+    if (!gate_bufs || !up_bufs || !down_outs) {
+        free(gate_bufs); free(up_bufs); free(down_outs);
+        free(thread_out);
+        return -1;
+    }
+
+    // Phase 1: parallel gate + up matvecs across all experts.
+    int work;
+#if defined(_OPENMP)
+    #pragma omp parallel for schedule(static)
+#endif
+    for (work = 0; work < 2 * K; work++) {
+        const int k_idx = work / 2;
+        const int kind  = work & 1;   // 0=gate, 1=up
+        const int eid   = r->expert_ids[k_idx];
+        const sp_optane_expert_t *exp =
+            sp_optane_layer_expert(&engine->reservoir, layer, eid);
+        if (!exp || !exp->gate_proj || !exp->up_proj || !exp->down_proj) continue;
+        const int n_ff   = (int)exp->gate_proj->ne[1];
+        const int in_dim = (int)exp->gate_proj->ne[0];
+        if (n_ff <= 0 || in_dim <= 0) continue;
+
+        const sp_optane_tensor_t *W = (kind == 0) ? exp->gate_proj : exp->up_proj;
+        float *dst = (kind == 0)
+            ? gate_bufs + (size_t)k_idx * ff_floats
+            : up_bufs   + (size_t)k_idx * ff_floats;
+        beast_matvec_serial(W, hidden_states, dst, n_ff, in_dim);
+    }
+
+    // Phase 2: silu + down + score-weighted accumulate.
     int k_idx;
 #if defined(_OPENMP)
     #pragma omp parallel for schedule(static)
 #endif
-    for (k_idx = 0; k_idx < r->n_selected; k_idx++) {
+    for (k_idx = 0; k_idx < K; k_idx++) {
         const int   eid   = r->expert_ids[k_idx];
         const float score = r->expert_scores[k_idx];
         const sp_optane_expert_t *exp =
             sp_optane_layer_expert(&engine->reservoir, layer, eid);
         if (!exp || !exp->gate_proj || !exp->up_proj || !exp->down_proj) continue;
+        const int n_ff = (int)exp->gate_proj->ne[1];
+        if (n_ff <= 0) continue;
 
-        const int n_ff   = (int)exp->gate_proj->ne[1];
-        const int in_dim = (int)exp->gate_proj->ne[0];
-        if (n_ff <= 0 || in_dim <= 0) continue;
+        float *gate_buf = gate_bufs + (size_t)k_idx * ff_floats;
+        float *up_buf   = up_bufs   + (size_t)k_idx * ff_floats;
+        float *down_out = down_outs + (size_t)k_idx * hidden_dim;
 
-        // Per-thread scratch — alloca'd inside the parallel region so
-        // each thread gets its own. ff_floats was probed before entering
-        // OMP (loop-invariant for this layer's experts).
-        float *gate_buf = (float *)SP_ALLOCA(ff_floats * sizeof(float));
-        float *up_buf   = (float *)SP_ALLOCA(ff_floats * sizeof(float));
-        float *down_out = (float *)SP_ALLOCA(hidden_dim * sizeof(float));
-
-        // Gate / up / down — serial inner matvec.
-        beast_matvec_serial(exp->gate_proj, hidden_states, gate_buf,
-                            n_ff, (int)hidden_dim);
-        beast_matvec_serial(exp->up_proj,   hidden_states, up_buf,
-                            n_ff, (int)hidden_dim);
         beast_silu_mul(gate_buf, up_buf, n_ff);
         beast_matvec_serial(exp->down_proj, gate_buf, down_out,
                             (int)hidden_dim, n_ff);
 
-        // Accumulate into this thread's private slot.
 #if defined(_OPENMP)
         const int tid = omp_get_thread_num();
 #else
@@ -1074,6 +1108,8 @@ int sp_beast_moe_forward(sp_beast_engine_t *engine,
             my_out[i] += score * down_out[i];
         }
     }
+
+    free(gate_bufs); free(up_bufs); free(down_outs);
 
     // Reduce per-thread contributions into the final output. memset the
     // output first because the function contract expects us to write the
@@ -2161,26 +2197,40 @@ static void beast_shared_expert_ffn(sp_beast_engine_t *engine,
 }
 
 // ── MoE FFN block (routed experts + shared expert) ──
+static uint64_t g_moe_router_us = 0;
+static uint64_t g_moe_routed_us = 0;
+static uint64_t g_moe_shared_us = 0;
+
 static void beast_moe_ffn(sp_beast_engine_t *engine, const float *xn,
                            float *ffn_out, int l, int n_embd) {
     sp_optane_reservoir_t *res = &engine->reservoir;
     float *scratch = engine->beast_scratch;
     char name[128];
+    const int trace =
+        (getenv("SP_BEAST_TRACE_TIMING") &&
+         getenv("SP_BEAST_TRACE_TIMING")[0] == '1') ? 1 : 0;
+
     float *router_logits = (float *)malloc((size_t)res->n_experts * sizeof(float));
     if (!router_logits) return;
 
     // Router
+    uint64_t t0 = trace ? sp_time_us() : 0;
     snprintf(name, sizeof(name), "blk.%d.ffn_gate_inp.weight", l);
     const sp_optane_tensor_t *gate_inp = sp_optane_find_tensor(res, name);
     if (gate_inp && gate_inp->ptr) {
         beast_matvec(gate_inp, xn, router_logits, scratch, res->n_experts, n_embd);
     }
+    if (trace) g_moe_router_us += sp_time_us() - t0;
 
     // Routed expert dispatch
+    t0 = trace ? sp_time_us() : 0;
     sp_beast_moe_forward(engine, router_logits, xn, ffn_out, l);
+    if (trace) g_moe_routed_us += sp_time_us() - t0;
 
     // Shared expert (always-on alongside routed experts)
+    t0 = trace ? sp_time_us() : 0;
     beast_shared_expert_ffn(engine, xn, ffn_out, l, n_embd);
+    if (trace) g_moe_shared_us += sp_time_us() - t0;
 
     free(router_logits);
 }
@@ -2750,6 +2800,11 @@ int sp_beast_forward(sp_beast_engine_t *engine,
         (getenv("SP_BEAST_TRACE_TIMING") &&
          getenv("SP_BEAST_TRACE_TIMING")[0] == '1') ? 1 : 0;
     uint64_t t_attn = 0, t_ssm = 0, t_norm = 0, t_moe = 0, t_dense = 0;
+    if (trace_timing) {
+        g_moe_router_us = 0;
+        g_moe_routed_us = 0;
+        g_moe_shared_us = 0;
+    }
 
     // 2. Layer loop — hybrid SSM+Attention dispatch
     for (int l = 0; l < n_layer; l++) {
@@ -2852,12 +2907,16 @@ int sp_beast_forward(sp_beast_engine_t *engine,
         const uint64_t total = t_attn + t_ssm + t_norm + t_moe + t_dense + t_logits;
         fprintf(stderr,
             "\n[trace] pos=%d  attn=%.2fms  ssm=%.2fms  norm=%.2fms  "
-            "moe=%.2fms  dense=%.2fms  logits=%.2fms  sum=%.2fms\n",
+            "moe=%.2fms (router=%.2fms routed=%.2fms shared=%.2fms)  "
+            "dense=%.2fms  logits=%.2fms  sum=%.2fms\n",
             pos,
             t_attn   / 1000.0,
             t_ssm    / 1000.0,
             t_norm   / 1000.0,
             t_moe    / 1000.0,
+            g_moe_router_us / 1000.0,
+            g_moe_routed_us / 1000.0,
+            g_moe_shared_us / 1000.0,
             t_dense  / 1000.0,
             t_logits / 1000.0,
             total    / 1000.0);
