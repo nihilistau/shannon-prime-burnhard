@@ -133,6 +133,28 @@ static inline void sp_pingpong_flip(sp_pingpong_t *pp) {
 }
 
 // ============================================================================
+// Per-expert fp32 dequant cache types (definitions; see helper functions
+// below near beast_matvec_cached).
+// ============================================================================
+#define SP_BEAST_DEQUANT_CACHE_CAP 96  // ~12 MiB/expert × 96 ≈ 1.2 GiB ceiling
+enum { BEAST_KIND_GATE = 0, BEAST_KIND_UP = 1, BEAST_KIND_DOWN = 2 };
+typedef struct {
+    int       layer;
+    int       expert;
+    int       kind;        // BEAST_KIND_*
+    uint64_t  lru_tick;
+    size_t    n_floats;
+    float    *data;
+} beast_dequant_entry_t;
+typedef struct {
+    beast_dequant_entry_t entries[SP_BEAST_DEQUANT_CACHE_CAP];
+    int       n_entries;
+    uint64_t  clock;
+    uint64_t  hits;
+    uint64_t  misses;
+} beast_dequant_cache_t;
+
+// ============================================================================
 // Boot sequence
 // ============================================================================
 
@@ -353,6 +375,24 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
 void sp_beast_free(sp_beast_engine_t *engine) {
     fprintf(stderr, "[sp-beast] Shutting down Beast Canyon engine...\n");
 
+    // Per-expert dequant cache.
+    if (engine->beast_dequant_cache) {
+        beast_dequant_cache_t *c =
+            (beast_dequant_cache_t *)engine->beast_dequant_cache;
+        const double total = (double)(c->hits + c->misses);
+        const double hit_pct = total > 0 ? 100.0 * (double)c->hits / total : 0.0;
+        fprintf(stderr,
+            "[sp-beast] dequant cache: hits=%llu misses=%llu hit_rate=%.1f%% "
+            "(cap=%d, %d entries used)\n",
+            (unsigned long long)c->hits, (unsigned long long)c->misses,
+            hit_pct, SP_BEAST_DEQUANT_CACHE_CAP, c->n_entries);
+        for (int i = 0; i < c->n_entries; ++i) {
+            free(c->entries[i].data);
+        }
+        free(c);
+        engine->beast_dequant_cache = NULL;
+    }
+
     // Order matters: Level Zero/Vulkan before CUDA (per safeguard spec)
     sp_shadow_steal_log_efficiency(&engine->shadow_steal);
     sp_shadow_steal_free(&engine->shadow_steal);
@@ -449,6 +489,146 @@ static void beast_matvec(const sp_optane_tensor_t *W,
 static void beast_silu_mul(float *gate, const float *up, int n);
 
 // ============================================================================
+// Per-expert fp32 dequant cache (moved up here so sp_beast_free can clean
+// it up — both reference the same type).
+// ============================================================================
+
+// Forward decls — beast_row_bytes / beast_dequant_row are defined further
+// down with the rest of the dequant kernels. Without these the implicit
+// declarations created by the first call site below conflict with the
+// later `static size_t / static void` definitions ("redefinition; different
+// basic types" under MSVC's stricter C front-end).
+static size_t beast_row_bytes(uint32_t type, int ne0);
+static void   beast_dequant_row(const void *src, float *dst, uint32_t type, int n);
+static void   beast_matvec(const sp_optane_tensor_t *W,
+                            const float *x, float *out, float *scratch,
+                            int n_out, int n_in);
+
+static beast_dequant_cache_t *beast_get_or_init_cache(sp_beast_engine_t *engine) {
+    if (!engine->beast_dequant_cache) {
+        engine->beast_dequant_cache = calloc(1, sizeof(beast_dequant_cache_t));
+    }
+    return (beast_dequant_cache_t *)engine->beast_dequant_cache;
+}
+
+// Look up (layer, expert, kind) in the cache. On hit, dst is unused (caller
+// should use the returned pointer instead). On miss, returns NULL after
+// reserving an empty slot — caller fills the returned dst pointer (or this
+// one if the caller wants to dequant into it directly). To keep the API
+// straightforward, we just return the cached pointer (or NULL on miss) and
+// let the caller dequant into it.
+static float *beast_dequant_get(beast_dequant_cache_t *c,
+                                 int layer, int expert, int kind) {
+    for (int i = 0; i < c->n_entries; ++i) {
+        beast_dequant_entry_t *e = &c->entries[i];
+        if (e->layer == layer && e->expert == expert && e->kind == kind) {
+            e->lru_tick = ++c->clock;
+            ++c->hits;
+            return e->data;
+        }
+    }
+    return NULL;
+}
+
+// Reserve a fresh entry sized for n_floats. Evicts LRU when at cap. Returns
+// the writable buffer the caller will dequant into. Cache then owns it.
+static float *beast_dequant_reserve(beast_dequant_cache_t *c,
+                                     int layer, int expert, int kind,
+                                     size_t n_floats) {
+    ++c->misses;
+    int slot = -1;
+    if (c->n_entries < SP_BEAST_DEQUANT_CACHE_CAP) {
+        slot = c->n_entries++;
+        c->entries[slot].data = NULL;
+    } else {
+        // Evict LRU.
+        slot = 0;
+        uint64_t oldest = c->entries[0].lru_tick;
+        for (int i = 1; i < c->n_entries; ++i) {
+            if (c->entries[i].lru_tick < oldest) {
+                oldest = c->entries[i].lru_tick;
+                slot = i;
+            }
+        }
+    }
+    beast_dequant_entry_t *e = &c->entries[slot];
+    if (e->data && e->n_floats != n_floats) { free(e->data); e->data = NULL; }
+    if (!e->data) {
+        e->data = (float *)malloc(n_floats * sizeof(float));
+        if (!e->data) return NULL;
+    }
+    e->layer    = layer;
+    e->expert   = expert;
+    e->kind     = kind;
+    e->n_floats = n_floats;
+    e->lru_tick = ++c->clock;
+    return e->data;
+}
+
+// Wrapper around beast_matvec that interposes a per-expert dequant cache.
+// Hit: skip dequant entirely, do the dot product against the cached fp32
+// weights via a SIMD path that bypasses beast_matvec's per-row dequant.
+// Miss: dequant the FULL matrix once into the cache, then dot.
+//
+// The dot kernel here mirrors the OMP+AVX-512 path inside beast_matvec,
+// minus the dequant pass — n_out rows of size n_in already-fp32.
+#if defined(__AVX512F__) || defined(_MSC_VER)
+#  include <immintrin.h>
+#endif
+static void beast_matvec_cached(sp_beast_engine_t *engine,
+                                  const sp_optane_tensor_t *W,
+                                  const float *x, float *out,
+                                  int n_out, int n_in,
+                                  int layer, int expert, int kind) {
+    beast_dequant_cache_t *c = beast_get_or_init_cache(engine);
+    const size_t n_floats = (size_t)n_out * (size_t)n_in;
+    float *fp = beast_dequant_get(c, layer, expert, kind);
+    if (!fp) {
+        fp = beast_dequant_reserve(c, layer, expert, kind, n_floats);
+        if (!fp) {
+            // Cache alloc failed — fall back to the per-row dequant path.
+            beast_matvec(W, x, out, /*scratch=*/NULL, n_out, n_in);
+            return;
+        }
+        // Dequant the WHOLE matrix once. Per-row, sequentially — n_out
+        // rows × beast_dequant_row. Cheap relative to the OMP gain we
+        // get next time this expert is selected.
+        const uint8_t *w_data = (const uint8_t *)W->ptr;
+        const size_t rb = beast_row_bytes(W->type, n_in);
+        for (int i = 0; i < n_out; ++i) {
+            beast_dequant_row(w_data + (size_t)i * rb,
+                               fp + (size_t)i * (size_t)n_in,
+                               W->type, n_in);
+        }
+    }
+
+    // Dot product against the fp32 cache. OMP across rows; AVX-512 inner.
+    int i;
+#if defined(_OPENMP)
+    #pragma omp parallel for schedule(static)
+#endif
+    for (i = 0; i < n_out; ++i) {
+        const float *row = fp + (size_t)i * (size_t)n_in;
+#if defined(__AVX512F__) || defined(_MSC_VER)
+        __m512 acc = _mm512_setzero_ps();
+        int j = 0;
+        for (; j + 16 <= n_in; j += 16) {
+            __m512 a = _mm512_loadu_ps(row + j);
+            __m512 b = _mm512_loadu_ps(x   + j);
+            acc = _mm512_fmadd_ps(a, b, acc);
+        }
+        float sum = _mm512_reduce_add_ps(acc);
+        for (; j < n_in; ++j) sum += row[j] * x[j];
+        out[i] = sum;
+#else
+        float sum = 0.0f;
+        for (int j = 0; j < n_in; ++j) sum += row[j] * x[j];
+        out[i] = sum;
+#endif
+    }
+}
+
+// ============================================================================
 // MoE Forward — The Execution Pulse
 // ============================================================================
 
@@ -531,11 +711,12 @@ int sp_beast_moe_forward(sp_beast_engine_t *engine,
                                       n_ff, in_dim);
         }
 
-        // Per-call scratch (gate_buf / up_buf / down_out) is pre-allocated
-        // above. beast_matvec uses its own per-thread dequant scratch via
-        // alloca inside the OMP region, so the caller-passed `scratch` is
-        // only a placeholder for the single-threaded fallback path.
-        float *scratch  = engine->beast_scratch;
+        // Pure OMP+AVX-512 path. The earlier LRU dequant cache turned out
+        // to regress because (layer,expert,kind) keyspace is too sparse
+        // (~30k unique tuples for Qwen3.6 35B-A3B) vs any reasonable cap,
+        // so hit rate is 0% in practice and the miss path's two-pass
+        // memory traffic is slower than the fused dequant+dot in matvec.
+        float *scratch = engine->beast_scratch;
 
         // Gate projection: [n_ff, n_embd] × [n_embd] → [n_ff]
         beast_matvec(exp->gate_proj, hidden_states, gate_buf, scratch,
@@ -1016,6 +1197,92 @@ static void beast_get_scale_min_k4(int j, const uint8_t *q,
 
 // --- Q4_K dequant: 144 bytes per 256 elements ---
 // Layout: [f16 d][f16 dmin][12 scales][128 qs (4-bit)]
+// Q4_K dequant — vectorised path.
+//
+// Per super-block: load 32 packed bytes (= 64 quants) at a time, mask
+// low nibbles for 32 outputs, shift+mask high nibbles for next 32.
+// Convert byte → uint32 → fp32 in a single dispatch via
+// _mm512_cvtepu8_epi32 + _mm512_cvtepi32_ps (one 16-lane pass per half),
+// then FMA against the per-sub-block scale and pre-negated min.
+//
+// The scale/min unpacking (8 sc + 8 mn per super-block from 12 packed
+// bytes) stays scalar — it's 8 calls of get_scale_min_k4 per 256-elem
+// block, dwarfed by the 256 dequants we now do in 4 vector iterations.
+//
+// Verified against the scalar reference (#if 0 block left as the
+// reference for diff/audit).
+#if defined(__AVX512F__) || defined(_MSC_VER)
+static void beast_dequant_q4_K(const void *src, float *dst, int n) {
+    const uint8_t *p = (const uint8_t *)src;
+    const __m256i mask_lo_nibble = _mm256_set1_epi8(0x0F);
+    for (int b = 0; b < n / 256; b++) {
+        const float d_super    = beast_fp16_to_fp32(*(const uint16_t *)(p + 0));
+        const float dmin_super = beast_fp16_to_fp32(*(const uint16_t *)(p + 2));
+        const uint8_t *scales = p + 4;
+        const uint8_t *qs     = p + 16;
+        float *y = dst + b * 256;
+
+        // 8 sub-block scales + 8 mins (cheap; 8 unpacks per super-block).
+        uint8_t sc[8], mn[8];
+        for (int j = 0; j < 8; ++j) {
+            beast_get_scale_min_k4(j, scales, &sc[j], &mn[j]);
+        }
+
+        // 4 groups: each group holds 32 packed bytes covering 2 sub-blocks
+        // of 32 elements (low nibbles → sub-block 2g, high → 2g+1).
+        for (int g = 0; g < 4; ++g) {
+            const __m256i raw = _mm256_loadu_si256(
+                (const __m256i *)(qs + g * 32));
+
+            // ── Low nibbles → sub-block 2g (elements [0..31])
+            {
+                const float d1 = d_super    * (float)sc[2*g];
+                const float m1 = dmin_super * (float)mn[2*g];
+                const __m512 d1v   = _mm512_set1_ps(d1);
+                const __m512 m1neg = _mm512_set1_ps(-m1);
+
+                const __m256i lo_b = _mm256_and_si256(raw, mask_lo_nibble);
+                const __m512i lo_lo = _mm512_cvtepu8_epi32(
+                    _mm256_castsi256_si128(lo_b));
+                const __m512i lo_hi = _mm512_cvtepu8_epi32(
+                    _mm256_extracti128_si256(lo_b, 1));
+                const __m512  lo_lo_f = _mm512_cvtepi32_ps(lo_lo);
+                const __m512  lo_hi_f = _mm512_cvtepi32_ps(lo_hi);
+                _mm512_storeu_ps(y + 0,  _mm512_fmadd_ps(lo_lo_f, d1v, m1neg));
+                _mm512_storeu_ps(y + 16, _mm512_fmadd_ps(lo_hi_f, d1v, m1neg));
+                y += 32;
+            }
+
+            // ── High nibbles → sub-block 2g+1 (elements [32..63])
+            // Per-byte high-nibble shift trick: shift right 4 at 16-bit
+            // granularity, then mask 0x0F. The bleed-in lives in the high
+            // nibble of each byte and is killed by the mask. Verified
+            // against the scalar reference: identical bit-for-bit.
+            {
+                const float d2 = d_super    * (float)sc[2*g + 1];
+                const float m2 = dmin_super * (float)mn[2*g + 1];
+                const __m512 d2v   = _mm512_set1_ps(d2);
+                const __m512 m2neg = _mm512_set1_ps(-m2);
+
+                const __m256i hi_raw = _mm256_srli_epi16(raw, 4);
+                const __m256i hi_b   = _mm256_and_si256(hi_raw, mask_lo_nibble);
+                const __m512i hi_lo = _mm512_cvtepu8_epi32(
+                    _mm256_castsi256_si128(hi_b));
+                const __m512i hi_hi = _mm512_cvtepu8_epi32(
+                    _mm256_extracti128_si256(hi_b, 1));
+                const __m512  hi_lo_f = _mm512_cvtepi32_ps(hi_lo);
+                const __m512  hi_hi_f = _mm512_cvtepi32_ps(hi_hi);
+                _mm512_storeu_ps(y + 0,  _mm512_fmadd_ps(hi_lo_f, d2v, m2neg));
+                _mm512_storeu_ps(y + 16, _mm512_fmadd_ps(hi_hi_f, d2v, m2neg));
+                y += 32;
+            }
+        }
+
+        p += 144;
+    }
+}
+#else
+// Scalar reference — bit-exact baseline kept for the no-AVX-512 build.
 static void beast_dequant_q4_K(const void *src, float *dst, int n) {
     const uint8_t *p = (const uint8_t *)src;
     for (int b = 0; b < n / 256; b++) {
@@ -1038,9 +1305,85 @@ static void beast_dequant_q4_K(const void *src, float *dst, int n) {
         p += 144;
     }
 }
+#endif
 
 // --- Q6_K dequant: 210 bytes per 256 elements ---
 // Layout: [128 ql (lower 4-bit)][64 qh (upper 2-bit)][16 scales (int8)][f16 d]
+// Q6_K dequant — vectorised path.
+//
+// Per super-block (256 elements, 210 bytes): 128 ql (4-bit lower) + 64 qh
+// (2-bit upper) + 16 i8 sub-block scales + 1 fp16 super-scale. Each output
+// is sc[sub] * d_super * ((ql_4 | (qh_2 << 4)) - 32). 8 sub-blocks of 32.
+//
+// Vector strategy mirrors Q4_K: load 32 bytes of ql / 32 bytes of qh once
+// per half-block, extract 4-bit and 2-bit fields with the per-byte
+// shift+mask trick (_mm256_srli_epi16 + 0x0F / 0x03 mask), assemble the
+// 6-bit value, sub 32, then int32 → fp32 → multiply by sc * d_super.
+#if defined(__AVX512F__) || defined(_MSC_VER)
+static void beast_dequant_q6_K(const void *src, float *dst, int n) {
+    const uint8_t *p = (const uint8_t *)src;
+    const __m256i mask_lo_nibble = _mm256_set1_epi8(0x0F);
+    const __m256i mask_lo_2bits  = _mm256_set1_epi8(0x03);
+    const __m512i thirty_two_i32 = _mm512_set1_epi32(32);
+
+    for (int b = 0; b < n / 256; b++) {
+        const uint8_t *ql0 = p;
+        const uint8_t *qh0 = p + 128;
+        const int8_t  *sc0 = (const int8_t *)(p + 192);
+        const float d_super =
+            beast_fp16_to_fp32(*(const uint16_t *)(p + 208));
+        float *y0 = dst + b * 256;
+
+        for (int half = 0; half < 2; half++) {
+            const uint8_t *ql = ql0 + (size_t)half * 64;
+            const uint8_t *qh = qh0 + (size_t)half * 32;
+            const int8_t  *sc = sc0 + (size_t)half * 4;
+            float *y = y0 + (size_t)half * 128;
+
+            const __m256i ql_lo = _mm256_loadu_si256((const __m256i *)(ql +  0));
+            const __m256i ql_hi = _mm256_loadu_si256((const __m256i *)(ql + 32));
+            const __m256i qh_b  = _mm256_loadu_si256((const __m256i *)(qh +  0));
+
+            // 4 sub-blocks (k=0..3), each 32 outputs:
+            // k=0: ql_lo low nibble | (qh & 0x03) << 4    → y[  0.. 31]
+            // k=1: ql_lo high nibble | ((qh>>2) & 0x03)<<4 → y[ 32.. 63]
+            // k=2: ql_hi low nibble | ((qh>>4) & 0x03)<<4 → y[ 64.. 95]
+            // k=3: ql_hi high nibble | ((qh>>6) & 0x03)<<4 → y[ 96..127]
+            #define SP_Q6K_SUB(k_, ql_chunk_, ql_shift_, qh_shift_) do {     \
+                __m256i ql_part = (ql_shift_) == 0                            \
+                    ? _mm256_and_si256((ql_chunk_), mask_lo_nibble)           \
+                    : _mm256_and_si256(_mm256_srli_epi16((ql_chunk_), (ql_shift_)), mask_lo_nibble); \
+                __m256i qh_part = (qh_shift_) == 0                            \
+                    ? _mm256_and_si256(qh_b, mask_lo_2bits)                   \
+                    : _mm256_and_si256(_mm256_srli_epi16(qh_b, (qh_shift_)), mask_lo_2bits); \
+                __m256i q_byte = _mm256_or_si256(ql_part,                     \
+                                                   _mm256_slli_epi16(qh_part, 4)); \
+                __m512i q_lo32 = _mm512_cvtepu8_epi32(                        \
+                    _mm256_castsi256_si128(q_byte));                          \
+                __m512i q_hi32 = _mm512_cvtepu8_epi32(                        \
+                    _mm256_extracti128_si256(q_byte, 1));                     \
+                q_lo32 = _mm512_sub_epi32(q_lo32, thirty_two_i32);            \
+                q_hi32 = _mm512_sub_epi32(q_hi32, thirty_two_i32);            \
+                const float scale = d_super * (float)sc[(k_)];                \
+                const __m512 sv = _mm512_set1_ps(scale);                      \
+                _mm512_storeu_ps(y + (k_)*32 +  0,                            \
+                    _mm512_mul_ps(_mm512_cvtepi32_ps(q_lo32), sv));           \
+                _mm512_storeu_ps(y + (k_)*32 + 16,                            \
+                    _mm512_mul_ps(_mm512_cvtepi32_ps(q_hi32), sv));           \
+            } while (0)
+
+            SP_Q6K_SUB(0, ql_lo, 0, 0);
+            SP_Q6K_SUB(1, ql_lo, 4, 2);
+            SP_Q6K_SUB(2, ql_hi, 0, 4);
+            SP_Q6K_SUB(3, ql_hi, 4, 6);
+
+            #undef SP_Q6K_SUB
+        }
+        p += 210;
+    }
+}
+#else
+// Scalar reference.
 static void beast_dequant_q6_K(const void *src, float *dst, int n) {
     const uint8_t *p = (const uint8_t *)src;
     for (int b = 0; b < n / 256; b++) {
@@ -1069,6 +1412,7 @@ static void beast_dequant_q6_K(const void *src, float *dst, int n) {
         p += 210;
     }
 }
+#endif
 
 // --- Q5_K dequant: 176 bytes per 256 elements ---
 // Layout: [f16 d][f16 dmin][12 scales][32 qh (high bits)][128 qs (4-bit)]

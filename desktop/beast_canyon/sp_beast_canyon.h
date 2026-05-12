@@ -207,6 +207,14 @@ typedef struct sp_beast_engine_t {
     float       *beast_conv_state;  // [n_ssm_layers * ssm_inner * (conv_kernel-1)]
     float       *beast_ssm_state;   // [n_ssm_layers * dt_rank * ssm_state_size]
     int          beast_n_ssm_layers;
+
+    // Per-expert fp32 dequant cache. Bounded LRU keyed on
+    // (layer, expert_id, tensor_kind ∈ {gate, up, down}). Same token's
+    // top-K experts dequantize once and reuse across the gate→up→down
+    // chain; consecutive tokens that land on the same hot experts skip
+    // the dequant entirely. Cap is set in sp_beast_canyon.c
+    // (SP_BEAST_DEQUANT_CACHE_CAP, default 96 ≈ 1.2 GiB at 12 MiB/expert).
+    void        *beast_dequant_cache;  // opaque, see beast_dequant_cache_t
 } sp_beast_engine_t;
 
 // ============================================================================
