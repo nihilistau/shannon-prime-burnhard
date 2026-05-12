@@ -383,6 +383,63 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
                     n_hot, gpu_ms);
             }
         }
+
+        // LM head GPU stage — independent toggle. The output projection
+        // is one HUGE matvec (vocab × n_embd ~= 248K × 2048 = 500M FMAs)
+        // run once per token. Even with the synchronous cuBLAS round-trip
+        // cost (~30 us), the per-call compute on this matrix is large
+        // enough that GPU wins decisively (~5 ms vs ~21 ms CPU at
+        // measured rates). Set SP_BEAST_GPU_LM_HEAD=1 to enable.
+        const char *lm_env = getenv("SP_BEAST_GPU_LM_HEAD");
+        if (lm_env && lm_env[0] == '1') {
+            if (!engine->beast_gpu_ctx) {
+                engine->beast_gpu_ctx = sp_beast_gpu_init();
+                if (engine->beast_gpu_ctx) {
+                    g_beast_gpu = (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx;
+                }
+            }
+            if (engine->beast_gpu_ctx) {
+                sp_optane_tensor_t *lm =
+                    (sp_optane_tensor_t *)sp_optane_find_tensor(
+                        &engine->reservoir, "output.weight");
+                if (!lm) {
+                    lm = (sp_optane_tensor_t *)sp_optane_find_tensor(
+                        &engine->reservoir, "token_embd.weight");
+                }
+                if (lm && lm->ptr && lm->n_dims == 2) {
+                    int n_in  = (int)lm->ne[0];
+                    int n_out = (int)lm->ne[1];
+                    size_t n_floats = (size_t)n_in * (size_t)n_out;
+                    uint64_t lm_t0 = sp_time_us();
+                    float *tmp = (float *)malloc(n_floats * sizeof(float));
+                    if (tmp) {
+                        const size_t rb = beast_row_bytes(lm->type, n_in);
+                        const uint8_t *src = (const uint8_t *)lm->ptr;
+                        for (int r = 0; r < n_out; ++r) {
+                            beast_dequant_row(src + (size_t)r * rb,
+                                              tmp + (size_t)r * (size_t)n_in,
+                                              lm->type, n_in);
+                        }
+                        void *d_w = sp_beast_gpu_stage_fp32(
+                            (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx,
+                            tmp, n_out, n_in);
+                        free(tmp);
+                        if (d_w) {
+                            lm->gpu_w_fp16 = d_w;
+                            lm->gpu_n_out  = n_out;
+                            lm->gpu_n_in   = n_in;
+                            fprintf(stderr,
+                                "[sp-beast-gpu] staged LM head '%s' "
+                                "(%dx%d, %.2f GiB fp16) in %.1f ms\n",
+                                lm->name, n_out, n_in,
+                                (double)(n_floats * 2) /
+                                (1024.0 * 1024.0 * 1024.0),
+                                (double)(sp_time_us() - lm_t0) / 1000.0);
+                        }
+                    }
+                }
+            }
+        }
     }
 #endif
 
@@ -2593,6 +2650,15 @@ int sp_beast_forward(sp_beast_engine_t *engine,
     float *ffn_out = (float *)malloc((size_t)n_embd * sizeof(float));
     if (!ffn_out) return -1;
 
+    // Per-section per-token timing — guarded behind SP_BEAST_TRACE_TIMING=1
+    // env var. Stays off in production; flip on to see where the budget
+    // actually goes (attn vs SSM vs MoE vs norm vs logits) when chasing
+    // the next optimisation lever.
+    const int trace_timing =
+        (getenv("SP_BEAST_TRACE_TIMING") &&
+         getenv("SP_BEAST_TRACE_TIMING")[0] == '1') ? 1 : 0;
+    uint64_t t_attn = 0, t_ssm = 0, t_norm = 0, t_moe = 0, t_dense = 0;
+
     // 2. Layer loop — hybrid SSM+Attention dispatch
     for (int l = 0; l < n_layer; l++) {
         // Determine if this is a full attention layer or SSM layer
@@ -2606,13 +2672,17 @@ int sp_beast_forward(sp_beast_engine_t *engine,
         }
 
         // ── Attention or SSM block ──
+        uint64_t t0_blk = trace_timing ? sp_time_us() : 0;
         if (is_full_attn) {
             beast_attn_layer(engine, x, l, pos);
+            if (trace_timing) t_attn += sp_time_us() - t0_blk;
         } else {
             beast_ssm_layer(engine, x, l, pos);
+            if (trace_timing) t_ssm += sp_time_us() - t0_blk;
         }
 
         // ── Post-attention/SSM norm (Qwen3.6 uses post_attention_norm) ──
+        uint64_t t0_norm = trace_timing ? sp_time_us() : 0;
         snprintf(name, sizeof(name), "blk.%d.post_attention_norm.weight", l);
         const sp_optane_tensor_t *pan = sp_optane_find_tensor(res, name);
         if (pan && pan->ptr) {
@@ -2628,11 +2698,15 @@ int sp_beast_forward(sp_beast_engine_t *engine,
             }
         }
 
+        if (trace_timing) t_norm += sp_time_us() - t0_norm;
+
         // ── MoE FFN block ──
         memset(ffn_out, 0, (size_t)n_embd * sizeof(float));
 
+        uint64_t t0_moe = trace_timing ? sp_time_us() : 0;
         if (res->is_moe) {
             beast_moe_ffn(engine, xn, ffn_out, l, n_embd);
+            if (trace_timing) t_moe += sp_time_us() - t0_moe;
         } else {
             // Dense FFN fallback
             snprintf(name, sizeof(name), "blk.%d.ffn_gate.weight", l);
@@ -2653,6 +2727,7 @@ int sp_beast_forward(sp_beast_engine_t *engine,
                 }
                 free(gate_buf); free(up_buf);
             }
+            if (trace_timing) t_dense += sp_time_us() - t0_moe;
         }
 
         // ── FFN residual ──
@@ -2673,10 +2748,27 @@ int sp_beast_forward(sp_beast_engine_t *engine,
     }
 
     // 4. LM head → logits
+    uint64_t t0_logits = trace_timing ? sp_time_us() : 0;
     const sp_optane_tensor_t *output_w = sp_optane_find_tensor(res, "output.weight");
     if (!output_w) output_w = sp_optane_find_tensor(res, "token_embd.weight"); // tied
     if (output_w && output_w->ptr) {
         beast_matvec(output_w, xn, logits, scratch, vocab, n_embd);
+    }
+    uint64_t t_logits = trace_timing ? (sp_time_us() - t0_logits) : 0;
+
+    if (trace_timing) {
+        const uint64_t total = t_attn + t_ssm + t_norm + t_moe + t_dense + t_logits;
+        fprintf(stderr,
+            "\n[trace] pos=%d  attn=%.2fms  ssm=%.2fms  norm=%.2fms  "
+            "moe=%.2fms  dense=%.2fms  logits=%.2fms  sum=%.2fms\n",
+            pos,
+            t_attn   / 1000.0,
+            t_ssm    / 1000.0,
+            t_norm   / 1000.0,
+            t_moe    / 1000.0,
+            t_dense  / 1000.0,
+            t_logits / 1000.0,
+            total    / 1000.0);
     }
 
     engine->beast_n_pos = pos + 1;
