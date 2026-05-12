@@ -433,6 +433,109 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
             }
         }
 
+        // ── Q4_K-resident GPU stage (custom CUDA kernel; separate path) ──
+        // Stages weights as raw Q4_K (144 B / 256 elems) and dispatches
+        // through sp_beast_gpu_q4k_matvec which runs the hand-rolled
+        // sp_q4k_matvec_kernel on the RTX. Half the VRAM bytes of fp16
+        // and dequant-fused — wins where the cuBLAS fp16 path lost.
+        // Independent envs:
+        //   SP_BEAST_GPU_Q4K_HOT_LAYERS=N : stage hot non-expert tensors
+        //                                    for first N layers
+        //   SP_BEAST_GPU_Q4K_LM_HEAD=1    : stage output.weight
+        const char *q4k_hot = getenv("SP_BEAST_GPU_Q4K_HOT_LAYERS");
+        const char *q4k_lm  = getenv("SP_BEAST_GPU_Q4K_LM_HEAD");
+        int q4k_hot_n = q4k_hot ? atoi(q4k_hot) : 0;
+        if (q4k_hot_n > 0 || (q4k_lm && q4k_lm[0] == '1')) {
+            if (!engine->beast_gpu_ctx) {
+                engine->beast_gpu_ctx = sp_beast_gpu_init();
+                if (engine->beast_gpu_ctx) {
+                    g_beast_gpu = (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx;
+                }
+            }
+            if (engine->beast_gpu_ctx) {
+                uint64_t q4k_t0 = sp_time_us();
+                size_t q4k_n = 0, q4k_bytes = 0;
+                const char *q4k_hot_kinds[] = {
+                    "attn_qkv.weight", "attn_q.weight", "attn_k.weight",
+                    "attn_v.weight",   "attn_o.weight", "attn_output.weight",
+                    "attn_gate.weight",
+                    "ssm_in.weight",   "ssm_out.weight",
+                    "ffn_gate_inp.weight",
+                    "ffn_gate_inp_shexp.weight",
+                    "ffn_gate_shexp.weight",
+                    "ffn_up_shexp.weight",
+                    "ffn_down_shexp.weight",
+                    NULL,
+                };
+                // LM head first (one big tensor — biggest amortisation).
+                if (q4k_lm && q4k_lm[0] == '1') {
+                    sp_optane_tensor_t *lm =
+                        (sp_optane_tensor_t *)sp_optane_find_tensor(
+                            &engine->reservoir, "output.weight");
+                    if (!lm) {
+                        lm = (sp_optane_tensor_t *)sp_optane_find_tensor(
+                            &engine->reservoir, "token_embd.weight");
+                    }
+                    if (lm && lm->ptr && lm->n_dims == 2 &&
+                        lm->type == SP_GGML_TYPE_Q4_K &&
+                        ((int)lm->ne[0]) % 256 == 0 &&
+                        !lm->gpu_w_fp16 && !lm->gpu_w_q4k)
+                    {
+                        int n_in = (int)lm->ne[0], n_out = (int)lm->ne[1];
+                        const size_t row_b =
+                            (size_t)(n_in / 256) * 144;
+                        const size_t total = row_b * (size_t)n_out;
+                        void *d_w = sp_beast_gpu_stage_q4k(
+                            (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx,
+                            lm->ptr, n_out, n_in);
+                        if (d_w) {
+                            lm->gpu_w_q4k       = d_w;
+                            lm->gpu_w_q4k_bytes = total;
+                            lm->gpu_n_out       = n_out;
+                            lm->gpu_n_in        = n_in;
+                            ++q4k_n; q4k_bytes += total;
+                        }
+                    }
+                }
+                // Hot per-layer non-expert weights (Q4_K only).
+                if (q4k_hot_n > 0) {
+                    for (uint32_t i = 0; i < engine->reservoir.tensor_count; i++) {
+                        sp_optane_tensor_t *t = &engine->reservoir.tensors[i];
+                        if (!t->ptr || t->n_dims != 2) continue;
+                        if (t->type != SP_GGML_TYPE_Q4_K) continue;
+                        if (((int)t->ne[0]) % 256 != 0) continue;
+                        if (t->gpu_w_q4k || t->gpu_w_fp16) continue;
+                        if (strncmp(t->name, "blk.", 4) != 0) continue;
+                        int layer_id = atoi(t->name + 4);
+                        if (layer_id < 0 || layer_id >= q4k_hot_n) continue;
+                        int hit = 0;
+                        for (int k = 0; q4k_hot_kinds[k]; ++k)
+                            if (strstr(t->name, q4k_hot_kinds[k])) { hit = 1; break; }
+                        if (!hit) continue;
+                        int n_in = (int)t->ne[0], n_out = (int)t->ne[1];
+                        if ((size_t)n_out * (size_t)n_in < 1000000) continue;
+                        const size_t row_b = (size_t)(n_in / 256) * 144;
+                        const size_t total = row_b * (size_t)n_out;
+                        void *d_w = sp_beast_gpu_stage_q4k(
+                            (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx,
+                            t->ptr, n_out, n_in);
+                        if (!d_w) break;
+                        t->gpu_w_q4k       = d_w;
+                        t->gpu_w_q4k_bytes = total;
+                        t->gpu_n_out       = n_out;
+                        t->gpu_n_in        = n_in;
+                        ++q4k_n; q4k_bytes += total;
+                    }
+                }
+                fprintf(stderr,
+                    "[sp-beast-gpu] Q4K-resident: staged %zu tensors "
+                    "(%.2f GiB raw Q4_K) in %.1f ms\n",
+                    q4k_n,
+                    (double)q4k_bytes / (1024.0 * 1024.0 * 1024.0),
+                    (double)(sp_time_us() - q4k_t0) / 1000.0);
+            }
+        }
+
         // LM head GPU stage — independent toggle. The output projection
         // is one HUGE matvec (vocab × n_embd ~= 248K × 2048 = 500M FMAs)
         // run once per token. Even with the synchronous cuBLAS round-trip
@@ -708,6 +811,12 @@ void sp_beast_free(sp_beast_engine_t *engine) {
                     (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx,
                     t->gpu_w_fp16);
                 t->gpu_w_fp16 = NULL;
+            }
+            if (t->gpu_w_q4k) {
+                sp_beast_gpu_free_weight(
+                    (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx,
+                    t->gpu_w_q4k);
+                t->gpu_w_q4k = NULL;
             }
         }
         sp_beast_gpu_destroy((sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx);
@@ -1903,17 +2012,21 @@ static void beast_matvec_serial(const sp_optane_tensor_t *W,
                                   const float *x, float *out,
                                   int n_out, int n_in) {
 #ifdef SP_WITH_CUDA
-    // GPU fast path: weight pre-staged as fp16 in VRAM. cuBLAS gemv
-    // wins big when the fp16 footprint fits VRAM and the per-call PCIe
-    // round-trip is amortised over n_out * n_in FMAs (worth it once
-    // n_out * n_in >= ~1e6 = 4 GFlops/sec equivalent).
+    // GPU fast paths — try Q4_K-resident kernel first (faster), fall
+    // back to cuBLAS-on-fp16, then to CPU.
+    if (g_beast_gpu && W->gpu_w_q4k &&
+        W->gpu_n_out == n_out && W->gpu_n_in == n_in) {
+        if (sp_beast_gpu_q4k_matvec(g_beast_gpu, W->gpu_w_q4k,
+                                       x, out, n_out, n_in) == 0) {
+            return;
+        }
+    }
     if (g_beast_gpu && W->gpu_w_fp16 &&
         W->gpu_n_out == n_out && W->gpu_n_in == n_in) {
         if (sp_beast_gpu_matvec(g_beast_gpu, W->gpu_w_fp16,
                                   x, out, n_out, n_in) == 0) {
             return;
         }
-        // On any GPU error, fall through to CPU path below.
     }
 #endif
     // fp32_stage was deactivated: see commit message. fp32 weights are 7x
@@ -1973,6 +2086,13 @@ static void beast_matvec(const sp_optane_tensor_t *W,
                          int n_out, int n_in) {
     (void)scratch;
 #ifdef SP_WITH_CUDA
+    if (g_beast_gpu && W->gpu_w_q4k &&
+        W->gpu_n_out == n_out && W->gpu_n_in == n_in) {
+        if (sp_beast_gpu_q4k_matvec(g_beast_gpu, W->gpu_w_q4k,
+                                       x, out, n_out, n_in) == 0) {
+            return;
+        }
+    }
     if (g_beast_gpu && W->gpu_w_fp16 &&
         W->gpu_n_out == n_out && W->gpu_n_in == n_in) {
         if (sp_beast_gpu_matvec(g_beast_gpu, W->gpu_w_fp16,

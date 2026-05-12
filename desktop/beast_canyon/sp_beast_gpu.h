@@ -55,6 +55,22 @@ size_t sp_beast_gpu_used_bytes(const sp_beast_gpu_ctx_t *ctx);
 // Free a single staged weight allocation.
 void sp_beast_gpu_free_weight(sp_beast_gpu_ctx_t *ctx, void *dW_fp16);
 
+// ── Q4_K-resident path (custom CUDA kernel; 2x less VRAM than fp16) ──
+//
+// Stages a row-major Q4_K weight tensor as raw bytes in VRAM.
+// `host_q4k_bytes` is the linear Q4_K buffer (n_out rows, each row with
+// n_in/256 super-blocks of 144 bytes). Returns device pointer or NULL.
+void *sp_beast_gpu_stage_q4k(sp_beast_gpu_ctx_t *ctx,
+                              const void *host_q4k_bytes,
+                              int n_out, int n_in);
+
+// y[n_out] = W_q4k @ x[n_in] using the custom kernel that dequants
+// inline. Synchronous. Returns 0 on success.
+int sp_beast_gpu_q4k_matvec(sp_beast_gpu_ctx_t *ctx,
+                             const void *dW_q4k,
+                             const float *x, float *out,
+                             int n_out, int n_in);
+
 #endif // SP_WITH_CUDA
 
 #ifdef __cplusplus

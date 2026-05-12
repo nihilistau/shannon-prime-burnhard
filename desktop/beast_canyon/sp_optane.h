@@ -108,6 +108,12 @@ typedef struct {
     void       *gpu_w_fp16;            // __half * in device memory
     int         gpu_n_out;             // rows of staged matrix (== ne[1])
     int         gpu_n_in;              // cols of staged matrix (== ne[0])
+    // Alternative: raw Q4_K bytes in VRAM, dispatched through the custom
+    // sp_q4k_matvec_kernel. Half the bytes of fp16, dequant-fused into
+    // the matvec — wins where cuBLAS-on-fp16 lost. Mutually exclusive
+    // with gpu_w_fp16 (we pick whichever was staged at boot).
+    void       *gpu_w_q4k;             // raw Q4_K bytes in device memory
+    size_t      gpu_w_q4k_bytes;       // total byte size of staged buffer
 } sp_optane_tensor_t;
 
 // ============================================================================

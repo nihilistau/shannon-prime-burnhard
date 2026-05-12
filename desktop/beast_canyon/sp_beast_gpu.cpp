@@ -215,12 +215,97 @@ void sp_beast_gpu_free_weight(sp_beast_gpu_ctx_t *ctx, void *dW_fp16) {
     cudaFree(dW_fp16);
 }
 
+// ────────────────────────────────────────────────────────────────────────
+// Q4_K-resident path (custom CUDA kernel; halves VRAM read traffic vs fp16)
+// ────────────────────────────────────────────────────────────────────────
+
+extern "C" cudaError_t sp_beast_gpu_q4k_matvec_launch(
+    const void *dW_raw,
+    const float *d_x, float *d_y,
+    int n_out, int n_in,
+    cudaStream_t stream);
+
+void *sp_beast_gpu_stage_q4k(sp_beast_gpu_ctx_t *ctx,
+                              const void *host_q4k_bytes,
+                              int n_out, int n_in) {
+    if (!ctx || !host_q4k_bytes) return NULL;
+    if (n_in % 256 != 0) {
+        SP_GPU_LOG("stage_q4k: n_in=%d not divisible by 256", n_in);
+        return NULL;
+    }
+    const size_t row_bytes = (size_t)(n_in / 256) * 144;
+    const size_t total = row_bytes * (size_t)n_out;
+    void *d_w = NULL;
+    if (cudaMalloc(&d_w, total) != cudaSuccess) {
+        SP_GPU_LOG("stage_q4k: cudaMalloc %zu bytes failed (used=%.2f GB)",
+                   total,
+                   (double)ctx->vram_bytes / (1024.0 * 1024.0 * 1024.0));
+        return NULL;
+    }
+    if (cudaMemcpy(d_w, host_q4k_bytes, total,
+                    cudaMemcpyHostToDevice) != cudaSuccess) {
+        SP_GPU_LOG("stage_q4k: H2D copy failed");
+        cudaFree(d_w);
+        return NULL;
+    }
+    ctx->vram_bytes += total;
+    return d_w;
+}
+
+// Per-row matvec scratch for the Q4_K path. Separate from the fp16 path's
+// d_x_fp16 because we need fp32 input here. Lazily grown.
+static void   *g_q4k_d_x_fp32     = NULL;
+static int     g_q4k_d_x_fp32_cap = 0;
+
+int sp_beast_gpu_q4k_matvec(sp_beast_gpu_ctx_t *ctx,
+                             const void *dW_q4k,
+                             const float *x, float *out,
+                             int n_out, int n_in) {
+    if (!ctx || !dW_q4k || !x || !out) return -1;
+
+    if (n_in > g_q4k_d_x_fp32_cap) {
+        if (g_q4k_d_x_fp32) cudaFree(g_q4k_d_x_fp32);
+        if (cudaMalloc(&g_q4k_d_x_fp32,
+                        (size_t)n_in * sizeof(float)) != cudaSuccess)
+            return -1;
+        g_q4k_d_x_fp32_cap = n_in;
+    }
+    // Reuse the fp16 path's output scratch (it's just a byte buffer).
+    // Pass a dummy n_in for the fp16 grow path so we only grow d_y/h_y.
+    if (sp_gpu_grow_scratch(ctx, /*fp16 input dummy=*/16, n_out) != 0)
+        return -1;
+
+    if (cudaMemcpyAsync(g_q4k_d_x_fp32, x,
+                         (size_t)n_in * sizeof(float),
+                         cudaMemcpyHostToDevice, ctx->stream)
+        != cudaSuccess) return -1;
+
+    cudaError_t krc = sp_beast_gpu_q4k_matvec_launch(
+        dW_q4k, (const float *)g_q4k_d_x_fp32,
+        (float *)ctx->d_y_fp32, n_out, n_in, ctx->stream);
+    if (krc != cudaSuccess) {
+        SP_GPU_LOG("q4k_matvec_launch failed: %s",
+                   cudaGetErrorString(krc));
+        return -1;
+    }
+
+    if (cudaMemcpyAsync(ctx->h_y_fp32_pinned, ctx->d_y_fp32,
+                         (size_t)n_out * sizeof(float),
+                         cudaMemcpyDeviceToHost, ctx->stream)
+        != cudaSuccess) return -1;
+    if (cudaStreamSynchronize(ctx->stream) != cudaSuccess) return -1;
+
+    memcpy(out, ctx->h_y_fp32_pinned, (size_t)n_out * sizeof(float));
+    return 0;
+}
+
 void sp_beast_gpu_destroy(sp_beast_gpu_ctx_t *ctx) {
     if (!ctx) return;
     if (ctx->d_x_fp16) cudaFree(ctx->d_x_fp16);
     if (ctx->d_y_fp32) cudaFree(ctx->d_y_fp32);
     if (ctx->h_x_fp16_pinned) cudaFreeHost(ctx->h_x_fp16_pinned);
     if (ctx->h_y_fp32_pinned) cudaFreeHost(ctx->h_y_fp32_pinned);
+    if (g_q4k_d_x_fp32) { cudaFree(g_q4k_d_x_fp32); g_q4k_d_x_fp32 = NULL; g_q4k_d_x_fp32_cap = 0; }
     if (ctx->stream) cudaStreamDestroy(ctx->stream);
     if (ctx->cublas) cublasDestroy(ctx->cublas);
     free(ctx);

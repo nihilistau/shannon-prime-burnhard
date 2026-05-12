@@ -47,14 +47,15 @@ target_include_directories(sp_beast_canyon
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../crt
 )
 
-# Platform flags
+# Platform flags. Use generator expressions so AVX-512/OpenMP flags only
+# go to C/C++ host compiles — nvcc would otherwise misinterpret them
+# (e.g. '/openmp' looks like an output-file flag and breaks the .cu build).
 if(MSVC)
-    target_compile_options(sp_beast_canyon PRIVATE /arch:AVX512 /O2 /openmp)
+    target_compile_options(sp_beast_canyon PRIVATE
+        $<$<COMPILE_LANGUAGE:C,CXX>:/arch:AVX512 /O2 /openmp>)
 elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(sp_beast_canyon PRIVATE
-        -mavx512f -mavx512bw -mavx512dq -mavx512vl -mf16c -mfma
-        -O3 -march=native -fopenmp
-    )
+        $<$<COMPILE_LANGUAGE:C,CXX>:-mavx512f;-mavx512bw;-mavx512dq;-mavx512vl;-mf16c;-mfma;-O3;-march=native;-fopenmp>)
     target_link_options(sp_beast_canyon PRIVATE -fopenmp)
 endif()
 
@@ -110,6 +111,10 @@ if(SP_WITH_CUDA)
             target_link_libraries(sp_beast_canyon PUBLIC CUDA::cudart CUDA::cublas)
             message(STATUS "Beast Canyon CUDA: ON (cudart+cublas from ${CUDAToolkit_LIBRARY_DIR})")
         endif()
+        # Custom Q4_K matvec kernel — needs nvcc. Root CMakeLists.txt
+        # already calls enable_language(CUDA), so target_sources picks it up.
+        target_sources(sp_beast_canyon PRIVATE sp_beast_gpu_q4k.cu)
+        set_source_files_properties(sp_beast_gpu_q4k.cu PROPERTIES LANGUAGE CUDA)
     else()
         message(WARNING "Beast Canyon: SP_WITH_CUDA=ON but CUDAToolkit not found — CUDA disabled")
     endif()
