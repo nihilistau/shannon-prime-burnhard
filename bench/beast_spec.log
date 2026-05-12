@@ -1,0 +1,5812 @@
+[sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=1 mobile=0
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 12287 MiB):
+  Device 0: NVIDIA GeForce RTX 2060, compute capability 7.5, VMM: yes, VRAM: 12287 MiB
+[sp-engine] GPU 0: NVIDIA GeForce RTX 2060 — 10.95 / 12.00 GiB
+[sp-engine] backend: CUDA0 (GPU)
+[sp-engine:diag] load_backend_offload_: enter             VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] gguf named tensors: 733, sum(ggml_nbytes)=20175.71 MiB
+[sp-engine:diag]   type=14 count=61 bytes=4802.93 MiB
+[sp-engine:diag]   type=0 count=301 bytes=84.74 MiB
+[sp-engine:diag]   type=12 count=371 bytes=15288.05 MiB
+[sp-engine:diag] after mmap_ctx walk                      VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] before ggml_backend_alloc_ctx_tensors    VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] backend_buf_size=20175.71 MiB (what ggml allocated on backend)
+[sp-engine:diag] after ggml_backend_alloc_ctx_tensors     VRAM free=0.00 GiB used=12.00 GiB / total=12.00 GiB
+[sp-engine] LlamaWeights: offloaded 733 tensors (20175.71 MiB) to backend
+[sp-engine:diag] after all tensor_set copies              VRAM free=0.00 GiB used=12.00 GiB / total=12.00 GiB
+[sp-engine:diag] after mmap ctx + gguf free               VRAM free=0.00 GiB used=12.00 GiB / total=12.00 GiB
+[sp-engine] mRoPE mode=8 sections=[11,11,10,0] n_rot=64
+[sp-engine] ForwardContext: multi-backend scheduler active (GPU + CPU fallback)
+[sp-engine] n_experts_used override: 8 -> 4 (CLI)
+[sp-engine] Beast top-K override: 4 experts/token
+
+╔══════════════════════════════════════════════╗
+║  SHANNON-PRIME: BEAST CANYON ENGINE          ║
+║  Heterogeneous MoE Orchestrator              ║
+╚══════════════════════════════════════════════╝
+
+[sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=1 mobile=0
+[BOOT] Stage 1: Mapping Optane reservoir...
+[sp-optane] Mapping reservoir: F:\Qwen3.6-35B-A3B-Q4_K_M.gguf (tier=RAM)
+[sp-optane] Loaded 20186.19 MB in 7088.81 ms (tier=RAM)
+[sp-optane] vocab_size inferred from token_embd.weight: 248320
+[sp-optane] Parsed 733 tensors, 41 KV pairs in 1.92 ms
+[sp-optane] Architecture: qwen35moe, layers=40, heads=16/2, embd=2048
+[sp-optane] Fused down layer=0: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=0: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=0: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=1: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=1: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=1: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=2: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=2: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=2: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=3: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=3: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=3: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=4: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=4: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=4: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=5: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=5: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=5: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=6: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=6: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=6: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=7: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=7: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=7: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=8: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=8: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=8: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=9: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=9: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=9: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=10: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=10: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=10: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=11: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=11: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=11: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=12: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=12: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=12: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=13: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=13: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=13: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=14: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=14: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=14: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=15: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=15: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=15: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=16: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=16: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=16: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=17: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=17: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=17: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=18: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=18: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=18: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=19: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=19: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=19: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=20: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=20: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=20: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=21: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=21: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=21: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=22: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=22: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=22: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=23: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=23: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=23: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=24: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=24: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=24: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=25: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=25: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=25: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=26: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=26: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=26: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=27: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=27: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=27: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=28: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=28: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=28: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=29: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=29: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=29: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=30: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=30: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=30: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=31: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=31: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=31: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=32: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=32: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=32: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=33: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=33: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=33: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=34: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=34: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=34: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=35: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=35: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=35: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=36: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=36: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=36: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=37: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=37: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=37: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=38: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=38: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=38: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=39: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=39: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=39: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] MoE: 256 experts (top-8), index built in 6.37 ms
+[sp-optane] === RESERVOIR ONLINE ===
+[sp-optane] Total boot: 7097.10 ms (map=7088.81, parse=1.92, index=6.37)
+[BOOT] Stage 2: Initializing AVX-512 Shredder...
+[sp-shredder] CPU features: AVX-512F=1 BW=1 VNNI=1 F16C=1 FP16=0
+[sp-shredder] Staging buffer: 4.00 MB (2097152 elements, fp16)
+[BOOT] Stage 3: Detecting GPU hardware...
+[sp-sync] CUDA GPU[0]: NVIDIA GeForce RTX 2060 — 12288 MB VRAM (0 MB free)
+[sp-sync] Single GPU mode: NVIDIA GeForce RTX 2060 (CUDA)
+[BOOT] Stage 4: Initializing ping-pong buffers...
+[BOOT] Stage 5: Sidecar disabled (mode=LEGACY)
+[sp-l0] Loaded ze_loader.dll
+[sp-l0] Device[0]: Intel(R) UHD Graphics (vendor=0x8086 type=1 flags=0x1)
+[sp-l0] ✓ Selected: Intel(R) UHD Graphics (32 EUs, 1 slices × 4 subslices)
+[sp-l0] Level Zero READY — Intel(R) UHD Graphics on Ring Bus
+[shadow-steal] Level Zero ARMED — Intel(R) UHD Graphics on Ring Bus
+[BOOT] Shadow-Steal: initialized (expert_dim=2048, tau=0.70)
+[sp-sync] Added GPU[1]: Level Zero device 0
+[BOOT] Registered UHD 750 as M2 Shadow Steal
+[BOOT] Stage 6: Initializing Shannon-Prime KV cache...
+[BOOT] KV cache: 40 layers × 2 heads × hd=128 (lazy alloc)
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE: ONLINE                 ║
+║  Boot time:  7323.02 ms                       ║
+║  Reservoir: 20186.2 MB (qwen35moe)           ║
+║  GPUs:      2 configured                     ║
+║  Sidecar:   OFFLINE                       ║
+╚══════════════════════════════════════════════╝
+
+[sp-engine] Furnace ARMED via --beast: reservoir=F:\Qwen3.6-35B-A3B-Q4_K_M.gguf GPUs=2 sidecar=offline
+[sp-engine] BEAST_MOE dispatch ARMED — routed-expert FFN will route per-token through Beast Canyon
+
+╔══════════════════════════════════════════════╗
+║  SHANNON-PRIME: BEAST CANYON ENGINE          ║
+║  Heterogeneous MoE Orchestrator              ║
+╚══════════════════════════════════════════════╝
+
+[sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=1 mobile=0
+[BOOT] Stage 1: Mapping Optane reservoir...
+[sp-optane] Mapping reservoir: D:\Files\Models\New folder\Qwen3-0.6B-Q4_K_M.gguf (tier=RAM)
+[sp-optane] Loaded 378.33 MB in 395.03 ms (tier=RAM)
+[sp-optane] vocab_size inferred from token_embd.weight: 151936
+[sp-optane] Parsed 310 tensors, 32 KV pairs in 1.18 ms
+[sp-optane] Architecture: qwen3, layers=28, heads=16/8, embd=1024
+[sp-optane] === RESERVOIR ONLINE ===
+[sp-optane] Total boot: 396.21 ms (map=395.03, parse=1.18, index=0.00)
+[BOOT] Stage 2: Initializing AVX-512 Shredder...
+[sp-shredder] CPU features: AVX-512F=1 BW=1 VNNI=1 F16C=1 FP16=0
+[sp-shredder] Staging buffer: 224.00 MB (117440512 elements, fp16)
+[BOOT] Stage 3: Detecting GPU hardware...
+[sp-sync] CUDA GPU[0]: NVIDIA GeForce RTX 2060 — 12288 MB VRAM (0 MB free)
+[sp-sync] Single GPU mode: NVIDIA GeForce RTX 2060 (CUDA)
+[BOOT] Stage 4: Initializing ping-pong buffers...
+[BOOT] Stage 5: Sidecar disabled (mode=LEGACY)
+[sp-l0] Loaded ze_loader.dll
+[sp-l0] Device[0]: Intel(R) UHD Graphics (vendor=0x8086 type=1 flags=0x1)
+[sp-l0] ✓ Selected: Intel(R) UHD Graphics (32 EUs, 1 slices × 4 subslices)
+[sp-l0] Level Zero READY — Intel(R) UHD Graphics on Ring Bus
+[shadow-steal] Level Zero ARMED — Intel(R) UHD Graphics on Ring Bus
+[BOOT] Shadow-Steal: initialized (expert_dim=1024, tau=0.70)
+[sp-sync] Added GPU[1]: Level Zero device 0
+[BOOT] Registered UHD 750 as M2 Shadow Steal
+[BOOT] Stage 6: Initializing Shannon-Prime KV cache...
+[BOOT] KV cache: 28 layers × 8 heads × hd=64 (lazy alloc)
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE: ONLINE                 ║
+║  Boot time:   583.09 ms                       ║
+║  Reservoir: 378.3 MB (qwen3)               ║
+║  GPUs:      2 configured                     ║
+║  Sidecar:   OFFLINE                       ║
+╚══════════════════════════════════════════════╝
+
+[sp-engine] Draft engine ARMED via --draft: D:\Files\Models\New folder\Qwen3-0.6B-Q4_K_M.gguf (K=4)
+[sp-cuda-hier] init: pd=330 skel=30 target=300 res_bits=2 bytes_per_pos=103 n_slots=80 max_seq=30
+[sp-engine] KvCache::create_gpu: hier path, hd=256 pad_dim=330 n_skel=30 n_target=300 res_bits=2 bytes_per_pos=103
+[sp-engine] hierarchical (GPU) cache: n_layer=40 n_head_kv=2 head_dim=256 pad_dim=330 max_seq=30 compression=4.97x skel=30/330 (9%) K=103B/pos V=103B/pos [GPU-resident]
+[sp-engine] PE: PrimePE-RoPE (composite-tiered, alpha=0.17)
+[sp-engine:diag] bind_cache: is_gpu=1 n_layer=40 n_head_kv=2 head_dim=256 max_seq=30
+[sp-mertens] Initialized for ctx=30: 0 high-risk positions flagged, O(1) risk cache active (0 KB)
+[sp-engine] Cauchy system initialized: mode=2 fixed_n=512 ricci=no mertens=yes params_b=0.00
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 10 tokens
+
+[sp-beast] Layer 1/40  pos=0  SSM
+[sp-beast] Layer 11/40  pos=0  SSM
+[sp-beast] Layer 21/40  pos=0  SSM
+[sp-beast] Layer 31/40  pos=0  SSM
+[sp-beast] Layer 40/40  pos=0  ATTN
+[sp-beast] Layer 1/40  pos=1  SSM
+[sp-beast] Layer 11/40  pos=1  SSM
+[sp-beast] Layer 21/40  pos=1  SSM
+[sp-beast] Layer 31/40  pos=1  SSM
+[sp-beast] Layer 40/40  pos=1  ATTN
+[sp-beast] Layer 1/40  pos=2  SSM
+[sp-beast] Layer 11/40  pos=2  SSM
+[sp-beast] Layer 21/40  pos=2  SSM
+[sp-beast] Layer 31/40  pos=2  SSM
+[sp-beast] Layer 40/40  pos=2  ATTN
+[sp-beast] Layer 1/40  pos=3  SSM
+[sp-beast] Layer 11/40  pos=3  SSM
+[sp-beast] Layer 21/40  pos=3  SSM
+[sp-beast] Layer 31/40  pos=3  SSM
+[sp-beast] Layer 40/40  pos=3  ATTN
+[sp-beast] Layer 1/40  pos=4  SSM
+[sp-beast] Layer 11/40  pos=4  SSM
+[sp-beast] Layer 21/40  pos=4  SSM
+[sp-beast] Layer 31/40  pos=4  SSM
+[sp-beast] Layer 40/40  pos=4  ATTN
+[sp-beast] Layer 1/40  pos=5  SSM
+[sp-beast] Layer 11/40  pos=5  SSM
+[sp-beast] Layer 21/40  pos=5  SSM
+[sp-beast] Layer 31/40  pos=5  SSM
+[sp-beast] Layer 40/40  pos=5  ATTN
+[sp-beast] Layer 1/40  pos=6  SSM
+[sp-beast] Layer 11/40  pos=6  SSM
+[sp-beast] Layer 21/40  pos=6  SSM
+[sp-beast] Layer 31/40  pos=6  SSM
+[sp-beast] Layer 40/40  pos=6  ATTN
+[sp-beast] Layer 1/40  pos=7  SSM
+[sp-beast] Layer 11/40  pos=7  SSM
+[sp-beast] Layer 21/40  pos=7  SSM
+[sp-beast] Layer 31/40  pos=7  SSM
+[sp-beast] Layer 40/40  pos=7  ATTN
+[sp-beast] Layer 1/40  pos=8  SSM
+[sp-beast] Layer 11/40  pos=8  SSM
+[sp-beast] Layer 21/40  pos=8  SSM
+[sp-beast] Layer 31/40  pos=8  SSM
+[sp-beast] Layer 40/40  pos=8  ATTN
+[sp-beast] Layer 1/40  pos=9  SSM
+[sp-beast] Layer 11/40  pos=9  SSM
+[sp-beast] Layer 21/40  pos=9  SSM
+[sp-beast] Layer 31/40  pos=9  SSM
+[sp-beast] Layer 40/40  pos=9  ATTN
+[sp-beast] Prefill done: 1585.3 ms (6.31 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/40  pos=10  SSM
+[sp-beast] Layer 11/40  pos=10  SSM
+[sp-beast] Layer 21/40  pos=10  SSM
+[sp-beast] Layer 31/40  pos=10  SSM
+[sp-beast] Layer 40/40  pos=10  ATTN
+[sp-beast] Token 1: id=108250  145 ms  (1.81 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:            451                       ║
+║  Tok/s:           818.4                       ║
+║  Inference:      551.05 ms                    ║
+║  Barrier:          2.28 ms (avg 5 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      20186.19 MB
+GGUF version:   3
+Tensors:        31453
+Architecture:   qwen35moe
+Model:          40 layers, 16 heads (2 KV), embd=2048
+Head dim:       128
+n_ff:           0
+RoPE freq_base: 10000000.0
+RoPE dim:       64 (mRoPE partial=YES)
+RMS norm eps:   1.0e-06
+Hybrid SSM:     YES (full_attn every 4 layers)
+SSM:            state=128 conv=4 inner=4096 groups=16 dt_rank=32
+Attn key/val:   256 / 256 per head
+DAX enabled:    no (page cache)
+MoE experts:    256 (top-8), 0 shared
+  Layer  0: 256/256 experts complete
+  Layer 39: 256/256 experts complete
+  Total: 10240/10240 expert slots populated
+Boot timing:    map=7088.81 ms, parse=1.92 ms, index=6.37 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      4.00 MB (2097152 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       440
+Avg wait:       5.2 us
+Min/Max wait:   2 / 171 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:     10 tokens in   1585.3 ms (  6.31 tok/s)  ║
+║  Decode:       1 tokens in    551.0 ms (  1.81 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 10 tokens
+
+[sp-beast] Layer 1/28  pos=0  ATTN
+[sp-beast] Layer 11/28  pos=0  ATTN
+[sp-beast] Layer 21/28  pos=0  ATTN
+[sp-beast] Layer 28/28  pos=0  ATTN
+[sp-beast] Layer 1/28  pos=1  ATTN
+[sp-beast] Layer 11/28  pos=1  ATTN
+[sp-beast] Layer 21/28  pos=1  ATTN
+[sp-beast] Layer 28/28  pos=1  ATTN
+[sp-beast] Layer 1/28  pos=2  ATTN
+[sp-beast] Layer 11/28  pos=2  ATTN
+[sp-beast] Layer 21/28  pos=2  ATTN
+[sp-beast] Layer 28/28  pos=2  ATTN
+[sp-beast] Layer 1/28  pos=3  ATTN
+[sp-beast] Layer 11/28  pos=3  ATTN
+[sp-beast] Layer 21/28  pos=3  ATTN
+[sp-beast] Layer 28/28  pos=3  ATTN
+[sp-beast] Layer 1/28  pos=4  ATTN
+[sp-beast] Layer 11/28  pos=4  ATTN
+[sp-beast] Layer 21/28  pos=4  ATTN
+[sp-beast] Layer 28/28  pos=4  ATTN
+[sp-beast] Layer 1/28  pos=5  ATTN
+[sp-beast] Layer 11/28  pos=5  ATTN
+[sp-beast] Layer 21/28  pos=5  ATTN
+[sp-beast] Layer 28/28  pos=5  ATTN
+[sp-beast] Layer 1/28  pos=6  ATTN
+[sp-beast] Layer 11/28  pos=6  ATTN
+[sp-beast] Layer 21/28  pos=6  ATTN
+[sp-beast] Layer 28/28  pos=6  ATTN
+[sp-beast] Layer 1/28  pos=7  ATTN
+[sp-beast] Layer 11/28  pos=7  ATTN
+[sp-beast] Layer 21/28  pos=7  ATTN
+[sp-beast] Layer 28/28  pos=7  ATTN
+[sp-beast] Layer 1/28  pos=8  ATTN
+[sp-beast] Layer 11/28  pos=8  ATTN
+[sp-beast] Layer 21/28  pos=8  ATTN
+[sp-beast] Layer 28/28  pos=8  ATTN
+[sp-beast] Layer 1/28  pos=9  ATTN
+[sp-beast] Layer 11/28  pos=9  ATTN
+[sp-beast] Layer 21/28  pos=9  ATTN
+[sp-beast] Layer 28/28  pos=9  ATTN
+[sp-beast] Prefill done: 365.4 ms (27.37 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=10  ATTN
+[sp-beast] Layer 11/28  pos=10  ATTN
+[sp-beast] Layer 21/28  pos=10  ATTN
+[sp-beast] Layer 28/28  pos=10  ATTN
+[sp-beast] Token 1: id= 57561  34 ms  (29.19 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:             11                       ║
+║  Tok/s:           321.1                       ║
+║  Inference:       34.26 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:     10 tokens in    365.4 ms ( 27.37 tok/s)  ║
+║  Decode:       1 tokens in     34.3 ms ( 29.19 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=11  ATTN
+[sp-beast] Layer 11/28  pos=11  ATTN
+[sp-beast] Layer 21/28  pos=11  ATTN
+[sp-beast] Layer 28/28  pos=11  ATTN
+[sp-beast] Prefill done: 36.1 ms (27.70 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=12  ATTN
+[sp-beast] Layer 11/28  pos=12  ATTN
+[sp-beast] Layer 21/28  pos=12  ATTN
+[sp-beast] Layer 28/28  pos=12  ATTN
+[sp-beast] Token 1: id= 14886  36 ms  (27.51 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            55.0                       ║
+║  Inference:       36.36 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     36.1 ms ( 27.70 tok/s)  ║
+║  Decode:       1 tokens in     36.4 ms ( 27.51 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=13  ATTN
+[sp-beast] Layer 11/28  pos=13  ATTN
+[sp-beast] Layer 21/28  pos=13  ATTN
+[sp-beast] Layer 28/28  pos=13  ATTN
+[sp-beast] Prefill done: 37.2 ms (26.88 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=14  ATTN
+[sp-beast] Layer 11/28  pos=14  ATTN
+[sp-beast] Layer 21/28  pos=14  ATTN
+[sp-beast] Layer 28/28  pos=14  ATTN
+[sp-beast] Token 1: id= 18389  37 ms  (27.34 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            54.7                       ║
+║  Inference:       36.58 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     37.2 ms ( 26.88 tok/s)  ║
+║  Decode:       1 tokens in     36.6 ms ( 27.34 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=15  ATTN
+[sp-beast] Layer 11/28  pos=15  ATTN
+[sp-beast] Layer 21/28  pos=15  ATTN
+[sp-beast] Layer 28/28  pos=15  ATTN
+[sp-beast] Prefill done: 37.2 ms (26.86 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=16  ATTN
+[sp-beast] Layer 11/28  pos=16  ATTN
+[sp-beast] Layer 21/28  pos=16  ATTN
+[sp-beast] Layer 28/28  pos=16  ATTN
+[sp-beast] Token 1: id= 17522  37 ms  (26.72 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            53.4                       ║
+║  Inference:       37.43 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     37.2 ms ( 26.86 tok/s)  ║
+║  Decode:       1 tokens in     37.4 ms ( 26.72 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=17  ATTN
+[sp-beast] Layer 11/28  pos=17  ATTN
+[sp-beast] Layer 21/28  pos=17  ATTN
+[sp-beast] Layer 28/28  pos=17  ATTN
+[sp-beast] Prefill done: 37.4 ms (26.74 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=18  ATTN
+[sp-beast] Layer 11/28  pos=18  ATTN
+[sp-beast] Layer 21/28  pos=18  ATTN
+[sp-beast] Layer 28/28  pos=18  ATTN
+[sp-beast] Token 1: id= 66975  36 ms  (28.15 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            56.3                       ║
+║  Inference:       35.53 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     37.4 ms ( 26.74 tok/s)  ║
+║  Decode:       1 tokens in     35.5 ms ( 28.15 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/40  pos=11  SSM
+[sp-beast] Layer 11/40  pos=11  SSM
+[sp-beast] Layer 21/40  pos=11  SSM
+[sp-beast] Layer 31/40  pos=11  SSM
+[sp-beast] Layer 40/40  pos=11  ATTN
+[sp-beast] Prefill done: 138.6 ms (7.21 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/40  pos=12  SSM
+[sp-beast] Layer 11/40  pos=12  SSM
+[sp-beast] Layer 21/40  pos=12  SSM
+[sp-beast] Layer 31/40  pos=12  SSM
+[sp-beast] Layer 40/40  pos=12  ATTN
+[sp-beast] Token 1: id=206797  141 ms  (4.77 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:             82                       ║
+║  Tok/s:           391.1                       ║
+║  Inference:      209.68 ms                    ║
+║  Barrier:          2.72 ms (avg 5 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      20186.19 MB
+GGUF version:   3
+Tensors:        31453
+Architecture:   qwen35moe
+Model:          40 layers, 16 heads (2 KV), embd=2048
+Head dim:       128
+n_ff:           0
+RoPE freq_base: 10000000.0
+RoPE dim:       64 (mRoPE partial=YES)
+RMS norm eps:   1.0e-06
+Hybrid SSM:     YES (full_attn every 4 layers)
+SSM:            state=128 conv=4 inner=4096 groups=16 dt_rank=32
+Attn key/val:   256 / 256 per head
+DAX enabled:    no (page cache)
+MoE experts:    256 (top-8), 0 shared
+  Layer  0: 256/256 experts complete
+  Layer 39: 256/256 experts complete
+  Total: 10240/10240 expert slots populated
+Boot timing:    map=7088.81 ms, parse=1.92 ms, index=6.37 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      4.00 MB (2097152 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       520
+Avg wait:       5.2 us
+Min/Max wait:   2 / 171 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in    138.6 ms (  7.21 tok/s)  ║
+║  Decode:       1 tokens in    209.7 ms (  4.77 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=19  ATTN
+[sp-beast] Layer 11/28  pos=19  ATTN
+[sp-beast] Layer 21/28  pos=19  ATTN
+[sp-beast] Layer 28/28  pos=19  ATTN
+[sp-beast] Prefill done: 36.3 ms (27.52 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=20  ATTN
+[sp-beast] Layer 11/28  pos=20  ATTN
+[sp-beast] Layer 21/28  pos=20  ATTN
+[sp-beast] Layer 28/28  pos=20  ATTN
+[sp-beast] Token 1: id= 59045  35 ms  (28.94 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            57.9                       ║
+║  Inference:       34.55 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     36.3 ms ( 27.52 tok/s)  ║
+║  Decode:       1 tokens in     34.6 ms ( 28.94 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=21  ATTN
+[sp-beast] Layer 11/28  pos=21  ATTN
+[sp-beast] Layer 21/28  pos=21  ATTN
+[sp-beast] Layer 28/28  pos=21  ATTN
+[sp-beast] Prefill done: 36.4 ms (27.49 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=22  ATTN
+[sp-beast] Layer 11/28  pos=22  ATTN
+[sp-beast] Layer 21/28  pos=22  ATTN
+[sp-beast] Layer 28/28  pos=22  ATTN
+[sp-beast] Token 1: id= 59045  36 ms  (27.53 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            55.1                       ║
+║  Inference:       36.33 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     36.4 ms ( 27.49 tok/s)  ║
+║  Decode:       1 tokens in     36.3 ms ( 27.53 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=23  ATTN
+[sp-beast] Layer 11/28  pos=23  ATTN
+[sp-beast] Layer 21/28  pos=23  ATTN
+[sp-beast] Layer 28/28  pos=23  ATTN
+[sp-beast] Prefill done: 33.5 ms (29.88 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=24  ATTN
+[sp-beast] Layer 11/28  pos=24  ATTN
+[sp-beast] Layer 21/28  pos=24  ATTN
+[sp-beast] Layer 28/28  pos=24  ATTN
+[sp-beast] Token 1: id=132522  38 ms  (26.59 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            53.2                       ║
+║  Inference:       37.61 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     33.5 ms ( 29.88 tok/s)  ║
+║  Decode:       1 tokens in     37.6 ms ( 26.59 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=25  ATTN
+[sp-beast] Layer 11/28  pos=25  ATTN
+[sp-beast] Layer 21/28  pos=25  ATTN
+[sp-beast] Layer 28/28  pos=25  ATTN
+[sp-beast] Prefill done: 37.5 ms (26.67 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=26  ATTN
+[sp-beast] Layer 11/28  pos=26  ATTN
+[sp-beast] Layer 21/28  pos=26  ATTN
+[sp-beast] Layer 28/28  pos=26  ATTN
+[sp-beast] Token 1: id=  8566  37 ms  (26.85 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            53.7                       ║
+║  Inference:       37.24 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     37.5 ms ( 26.67 tok/s)  ║
+║  Decode:       1 tokens in     37.2 ms ( 26.85 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=27  ATTN
+[sp-beast] Layer 11/28  pos=27  ATTN
+[sp-beast] Layer 21/28  pos=27  ATTN
+[sp-beast] Layer 28/28  pos=27  ATTN
+[sp-beast] Prefill done: 36.0 ms (27.79 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=28  ATTN
+[sp-beast] Layer 11/28  pos=28  ATTN
+[sp-beast] Layer 21/28  pos=28  ATTN
+[sp-beast] Layer 28/28  pos=28  ATTN
+[sp-beast] Token 1: id=106100  37 ms  (27.11 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            54.2                       ║
+║  Inference:       36.89 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     36.0 ms ( 27.79 tok/s)  ║
+║  Decode:       1 tokens in     36.9 ms ( 27.11 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/40  pos=13  SSM
+[sp-beast] Layer 11/40  pos=13  SSM
+[sp-beast] Layer 21/40  pos=13  SSM
+[sp-beast] Layer 31/40  pos=13  SSM
+[sp-beast] Layer 40/40  pos=13  ATTN
+[sp-beast] Prefill done: 106.5 ms (9.39 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/40  pos=14  SSM
+[sp-beast] Layer 11/40  pos=14  SSM
+[sp-beast] Layer 21/40  pos=14  SSM
+[sp-beast] Layer 31/40  pos=14  SSM
+[sp-beast] Layer 40/40  pos=14  ATTN
+[sp-beast] Token 1: id= 65515  102 ms  (6.09 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:             82                       ║
+║  Tok/s:           499.3                       ║
+║  Inference:      164.24 ms                    ║
+║  Barrier:          3.04 ms (avg 5 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      20186.19 MB
+GGUF version:   3
+Tensors:        31453
+Architecture:   qwen35moe
+Model:          40 layers, 16 heads (2 KV), embd=2048
+Head dim:       128
+n_ff:           0
+RoPE freq_base: 10000000.0
+RoPE dim:       64 (mRoPE partial=YES)
+RMS norm eps:   1.0e-06
+Hybrid SSM:     YES (full_attn every 4 layers)
+SSM:            state=128 conv=4 inner=4096 groups=16 dt_rank=32
+Attn key/val:   256 / 256 per head
+DAX enabled:    no (page cache)
+MoE experts:    256 (top-8), 0 shared
+  Layer  0: 256/256 experts complete
+  Layer 39: 256/256 experts complete
+  Total: 10240/10240 expert slots populated
+Boot timing:    map=7088.81 ms, parse=1.92 ms, index=6.37 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      4.00 MB (2097152 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       600
+Avg wait:       5.1 us
+Min/Max wait:   1 / 171 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in    106.5 ms (  9.39 tok/s)  ║
+║  Decode:       1 tokens in    164.2 ms (  6.09 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=29  ATTN
+[sp-beast] Layer 11/28  pos=29  ATTN
+[sp-beast] Layer 21/28  pos=29  ATTN
+[sp-beast] Layer 28/28  pos=29  ATTN
+[sp-beast] Prefill done: 29.7 ms (33.62 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=30  ATTN
+[sp-beast] Layer 11/28  pos=30  ATTN
+[sp-beast] Layer 21/28  pos=30  ATTN
+[sp-beast] Layer 28/28  pos=30  ATTN
+[sp-beast] Token 1: id= 87944  27 ms  (36.99 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            74.0                       ║
+║  Inference:       27.04 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     29.7 ms ( 33.62 tok/s)  ║
+║  Decode:       1 tokens in     27.0 ms ( 36.99 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=31  ATTN
+[sp-beast] Layer 11/28  pos=31  ATTN
+[sp-beast] Layer 21/28  pos=31  ATTN
+[sp-beast] Layer 28/28  pos=31  ATTN
+[sp-beast] Prefill done: 30.3 ms (33.05 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=32  ATTN
+[sp-beast] Layer 11/28  pos=32  ATTN
+[sp-beast] Layer 21/28  pos=32  ATTN
+[sp-beast] Layer 28/28  pos=32  ATTN
+[sp-beast] Token 1: id= 52774  31 ms  (32.23 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            64.5                       ║
+║  Inference:       31.03 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     30.3 ms ( 33.05 tok/s)  ║
+║  Decode:       1 tokens in     31.0 ms ( 32.23 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=33  ATTN
+[sp-beast] Layer 11/28  pos=33  ATTN
+[sp-beast] Layer 21/28  pos=33  ATTN
+[sp-beast] Layer 28/28  pos=33  ATTN
+[sp-beast] Prefill done: 36.9 ms (27.12 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=34  ATTN
+[sp-beast] Layer 11/28  pos=34  ATTN
+[sp-beast] Layer 21/28  pos=34  ATTN
+[sp-beast] Layer 28/28  pos=34  ATTN
+[sp-beast] Token 1: id= 51346  42 ms  (23.97 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            47.9                       ║
+║  Inference:       41.73 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     36.9 ms ( 27.12 tok/s)  ║
+║  Decode:       1 tokens in     41.7 ms ( 23.97 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=35  ATTN
+[sp-beast] Layer 11/28  pos=35  ATTN
+[sp-beast] Layer 21/28  pos=35  ATTN
+[sp-beast] Layer 28/28  pos=35  ATTN
+[sp-beast] Prefill done: 45.2 ms (22.14 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=36  ATTN
+[sp-beast] Layer 11/28  pos=36  ATTN
+[sp-beast] Layer 21/28  pos=36  ATTN
+[sp-beast] Layer 28/28  pos=36  ATTN
+[sp-beast] Token 1: id=  6984  38 ms  (26.15 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            52.3                       ║
+║  Inference:       38.24 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     45.2 ms ( 22.14 tok/s)  ║
+║  Decode:       1 tokens in     38.2 ms ( 26.15 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=37  ATTN
+[sp-beast] Layer 11/28  pos=37  ATTN
+[sp-beast] Layer 21/28  pos=37  ATTN
+[sp-beast] Layer 28/28  pos=37  ATTN
+[sp-beast] Prefill done: 39.1 ms (25.57 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=38  ATTN
+[sp-beast] Layer 11/28  pos=38  ATTN
+[sp-beast] Layer 21/28  pos=38  ATTN
+[sp-beast] Layer 28/28  pos=38  ATTN
+[sp-beast] Token 1: id= 33958  40 ms  (24.78 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            49.6                       ║
+║  Inference:       40.35 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     39.1 ms ( 25.57 tok/s)  ║
+║  Decode:       1 tokens in     40.3 ms ( 24.78 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/40  pos=15  SSM
+[sp-beast] Layer 11/40  pos=15  SSM
+[sp-beast] Layer 21/40  pos=15  SSM
+[sp-beast] Layer 31/40  pos=15  SSM
+[sp-beast] Layer 40/40  pos=15  ATTN
+[sp-beast] Prefill done: 134.1 ms (7.46 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/40  pos=16  SSM
+[sp-beast] Layer 11/40  pos=16  SSM
+[sp-beast] Layer 21/40  pos=16  SSM
+[sp-beast] Layer 31/40  pos=16  SSM
+[sp-beast] Layer 40/40  pos=16  ATTN
+[sp-beast] Token 1: id= 28210  137 ms  (4.95 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:             82                       ║
+║  Tok/s:           406.3                       ║
+║  Inference:      201.84 ms                    ║
+║  Barrier:          3.43 ms (avg 5 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      20186.19 MB
+GGUF version:   3
+Tensors:        31453
+Architecture:   qwen35moe
+Model:          40 layers, 16 heads (2 KV), embd=2048
+Head dim:       128
+n_ff:           0
+RoPE freq_base: 10000000.0
+RoPE dim:       64 (mRoPE partial=YES)
+RMS norm eps:   1.0e-06
+Hybrid SSM:     YES (full_attn every 4 layers)
+SSM:            state=128 conv=4 inner=4096 groups=16 dt_rank=32
+Attn key/val:   256 / 256 per head
+DAX enabled:    no (page cache)
+MoE experts:    256 (top-8), 0 shared
+  Layer  0: 256/256 experts complete
+  Layer 39: 256/256 experts complete
+  Total: 10240/10240 expert slots populated
+Boot timing:    map=7088.81 ms, parse=1.92 ms, index=6.37 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      4.00 MB (2097152 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       680
+Avg wait:       5.0 us
+Min/Max wait:   1 / 171 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in    134.1 ms (  7.46 tok/s)  ║
+║  Decode:       1 tokens in    201.8 ms (  4.95 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=39  ATTN
+[sp-beast] Layer 11/28  pos=39  ATTN
+[sp-beast] Layer 21/28  pos=39  ATTN
+[sp-beast] Layer 28/28  pos=39  ATTN
+[sp-beast] Prefill done: 43.6 ms (22.92 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=40  ATTN
+[sp-beast] Layer 11/28  pos=40  ATTN
+[sp-beast] Layer 21/28  pos=40  ATTN
+[sp-beast] Layer 28/28  pos=40  ATTN
+[sp-beast] Token 1: id= 27029  41 ms  (24.16 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            48.3                       ║
+║  Inference:       41.39 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     43.6 ms ( 22.92 tok/s)  ║
+║  Decode:       1 tokens in     41.4 ms ( 24.16 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=41  ATTN
+[sp-beast] Layer 11/28  pos=41  ATTN
+[sp-beast] Layer 21/28  pos=41  ATTN
+[sp-beast] Layer 28/28  pos=41  ATTN
+[sp-beast] Prefill done: 40.6 ms (24.64 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=42  ATTN
+[sp-beast] Layer 11/28  pos=42  ATTN
+[sp-beast] Layer 21/28  pos=42  ATTN
+[sp-beast] Layer 28/28  pos=42  ATTN
+[sp-beast] Token 1: id= 41550  42 ms  (23.80 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            47.6                       ║
+║  Inference:       42.01 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     40.6 ms ( 24.64 tok/s)  ║
+║  Decode:       1 tokens in     42.0 ms ( 23.80 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=43  ATTN
+[sp-beast] Layer 11/28  pos=43  ATTN
+[sp-beast] Layer 21/28  pos=43  ATTN
+[sp-beast] Layer 28/28  pos=43  ATTN
+[sp-beast] Prefill done: 44.4 ms (22.51 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=44  ATTN
+[sp-beast] Layer 11/28  pos=44  ATTN
+[sp-beast] Layer 21/28  pos=44  ATTN
+[sp-beast] Layer 28/28  pos=44  ATTN
+[sp-beast] Token 1: id= 94710  44 ms  (22.88 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            45.8                       ║
+║  Inference:       43.71 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     44.4 ms ( 22.51 tok/s)  ║
+║  Decode:       1 tokens in     43.7 ms ( 22.88 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=45  ATTN
+[sp-beast] Layer 11/28  pos=45  ATTN
+[sp-beast] Layer 21/28  pos=45  ATTN
+[sp-beast] Layer 28/28  pos=45  ATTN
+[sp-beast] Prefill done: 42.9 ms (23.30 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=46  ATTN
+[sp-beast] Layer 11/28  pos=46  ATTN
+[sp-beast] Layer 21/28  pos=46  ATTN
+[sp-beast] Layer 28/28  pos=46  ATTN
+[sp-beast] Token 1: id=116065  40 ms  (24.92 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            49.8                       ║
+║  Inference:       40.13 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     42.9 ms ( 23.30 tok/s)  ║
+║  Decode:       1 tokens in     40.1 ms ( 24.92 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=47  ATTN
+[sp-beast] Layer 11/28  pos=47  ATTN
+[sp-beast] Layer 21/28  pos=47  ATTN
+[sp-beast] Layer 28/28  pos=47  ATTN
+[sp-beast] Prefill done: 32.5 ms (30.78 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=48  ATTN
+[sp-beast] Layer 11/28  pos=48  ATTN
+[sp-beast] Layer 21/28  pos=48  ATTN
+[sp-beast] Layer 28/28  pos=48  ATTN
+[sp-beast] Token 1: id=126135  35 ms  (28.36 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            56.7                       ║
+║  Inference:       35.26 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     32.5 ms ( 30.78 tok/s)  ║
+║  Decode:       1 tokens in     35.3 ms ( 28.36 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/40  pos=17  SSM
+[sp-beast] Layer 11/40  pos=17  SSM
+[sp-beast] Layer 21/40  pos=17  SSM
+[sp-beast] Layer 31/40  pos=17  SSM
+[sp-beast] Layer 40/40  pos=17  ATTN
+[sp-beast] Prefill done: 100.9 ms (9.91 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/40  pos=18  SSM
+[sp-beast] Layer 11/40  pos=18  SSM
+[sp-beast] Layer 21/40  pos=18  SSM
+[sp-beast] Layer 31/40  pos=18  SSM
+[sp-beast] Layer 40/40  pos=18  ATTN
+[sp-beast] Token 1: id= 66627  123 ms  (5.39 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:             82                       ║
+║  Tok/s:           441.7                       ║
+║  Inference:      185.65 ms                    ║
+║  Barrier:          3.70 ms (avg 5 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      20186.19 MB
+GGUF version:   3
+Tensors:        31453
+Architecture:   qwen35moe
+Model:          40 layers, 16 heads (2 KV), embd=2048
+Head dim:       128
+n_ff:           0
+RoPE freq_base: 10000000.0
+RoPE dim:       64 (mRoPE partial=YES)
+RMS norm eps:   1.0e-06
+Hybrid SSM:     YES (full_attn every 4 layers)
+SSM:            state=128 conv=4 inner=4096 groups=16 dt_rank=32
+Attn key/val:   256 / 256 per head
+DAX enabled:    no (page cache)
+MoE experts:    256 (top-8), 0 shared
+  Layer  0: 256/256 experts complete
+  Layer 39: 256/256 experts complete
+  Total: 10240/10240 expert slots populated
+Boot timing:    map=7088.81 ms, parse=1.92 ms, index=6.37 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      4.00 MB (2097152 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       760
+Avg wait:       4.9 us
+Min/Max wait:   1 / 171 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in    100.9 ms (  9.91 tok/s)  ║
+║  Decode:       1 tokens in    185.7 ms (  5.39 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=49  ATTN
+[sp-beast] Layer 11/28  pos=49  ATTN
+[sp-beast] Layer 21/28  pos=49  ATTN
+[sp-beast] Layer 28/28  pos=49  ATTN
+[sp-beast] Prefill done: 36.5 ms (27.41 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=50  ATTN
+[sp-beast] Layer 11/28  pos=50  ATTN
+[sp-beast] Layer 21/28  pos=50  ATTN
+[sp-beast] Layer 28/28  pos=50  ATTN
+[sp-beast] Token 1: id= 94710  37 ms  (27.10 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            54.2                       ║
+║  Inference:       36.91 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     36.5 ms ( 27.41 tok/s)  ║
+║  Decode:       1 tokens in     36.9 ms ( 27.10 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=51  ATTN
+[sp-beast] Layer 11/28  pos=51  ATTN
+[sp-beast] Layer 21/28  pos=51  ATTN
+[sp-beast] Layer 28/28  pos=51  ATTN
+[sp-beast] Prefill done: 34.0 ms (29.38 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=52  ATTN
+[sp-beast] Layer 11/28  pos=52  ATTN
+[sp-beast] Layer 21/28  pos=52  ATTN
+[sp-beast] Layer 28/28  pos=52  ATTN
+[sp-beast] Token 1: id= 21213  32 ms  (31.48 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            63.0                       ║
+║  Inference:       31.77 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     34.0 ms ( 29.38 tok/s)  ║
+║  Decode:       1 tokens in     31.8 ms ( 31.48 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=53  ATTN
+[sp-beast] Layer 11/28  pos=53  ATTN
+[sp-beast] Layer 21/28  pos=53  ATTN
+[sp-beast] Layer 28/28  pos=53  ATTN
+[sp-beast] Prefill done: 32.6 ms (30.67 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=54  ATTN
+[sp-beast] Layer 11/28  pos=54  ATTN
+[sp-beast] Layer 21/28  pos=54  ATTN
+[sp-beast] Layer 28/28  pos=54  ATTN
+[sp-beast] Token 1: id= 28873  32 ms  (31.64 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            63.3                       ║
+║  Inference:       31.61 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     32.6 ms ( 30.67 tok/s)  ║
+║  Decode:       1 tokens in     31.6 ms ( 31.64 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=55  ATTN
+[sp-beast] Layer 11/28  pos=55  ATTN
+[sp-beast] Layer 21/28  pos=55  ATTN
+[sp-beast] Layer 28/28  pos=55  ATTN
+[sp-beast] Prefill done: 34.3 ms (29.15 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=56  ATTN
+[sp-beast] Layer 11/28  pos=56  ATTN
+[sp-beast] Layer 21/28  pos=56  ATTN
+[sp-beast] Layer 28/28  pos=56  ATTN
+[sp-beast] Token 1: id= 54676  37 ms  (27.22 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            54.4                       ║
+║  Inference:       36.74 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     34.3 ms ( 29.15 tok/s)  ║
+║  Decode:       1 tokens in     36.7 ms ( 27.22 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=57  ATTN
+[sp-beast] Layer 11/28  pos=57  ATTN
+[sp-beast] Layer 21/28  pos=57  ATTN
+[sp-beast] Layer 28/28  pos=57  ATTN
+[sp-beast] Prefill done: 45.7 ms (21.90 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=58  ATTN
+[sp-beast] Layer 11/28  pos=58  ATTN
+[sp-beast] Layer 21/28  pos=58  ATTN
+[sp-beast] Layer 28/28  pos=58  ATTN
+[sp-beast] Token 1: id= 51346  44 ms  (22.63 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            45.3                       ║
+║  Inference:       44.18 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     45.7 ms ( 21.90 tok/s)  ║
+║  Decode:       1 tokens in     44.2 ms ( 22.63 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/40  pos=19  SSM
+[sp-beast] Layer 11/40  pos=19  SSM
+[sp-beast] Layer 21/40  pos=19  SSM
+[sp-beast] Layer 31/40  pos=19  SSM
+[sp-beast] Layer 40/40  pos=19  ATTN
+[sp-beast] Prefill done: 130.4 ms (7.67 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/40  pos=20  SSM
+[sp-beast] Layer 11/40  pos=20  SSM
+[sp-beast] Layer 21/40  pos=20  SSM
+[sp-beast] Layer 31/40  pos=20  SSM
+[sp-beast] Layer 40/40  pos=20  ATTN
+[sp-beast] Token 1: id=  2669  149 ms  (4.65 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:             82                       ║
+║  Tok/s:           381.4                       ║
+║  Inference:      214.99 ms                    ║
+║  Barrier:          4.12 ms (avg 5 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      20186.19 MB
+GGUF version:   3
+Tensors:        31453
+Architecture:   qwen35moe
+Model:          40 layers, 16 heads (2 KV), embd=2048
+Head dim:       128
+n_ff:           0
+RoPE freq_base: 10000000.0
+RoPE dim:       64 (mRoPE partial=YES)
+RMS norm eps:   1.0e-06
+Hybrid SSM:     YES (full_attn every 4 layers)
+SSM:            state=128 conv=4 inner=4096 groups=16 dt_rank=32
+Attn key/val:   256 / 256 per head
+DAX enabled:    no (page cache)
+MoE experts:    256 (top-8), 0 shared
+  Layer  0: 256/256 experts complete
+  Layer 39: 256/256 experts complete
+  Total: 10240/10240 expert slots populated
+Boot timing:    map=7088.81 ms, parse=1.92 ms, index=6.37 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      4.00 MB (2097152 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       840
+Avg wait:       4.9 us
+Min/Max wait:   1 / 171 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in    130.4 ms (  7.67 tok/s)  ║
+║  Decode:       1 tokens in    215.0 ms (  4.65 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=59  ATTN
+[sp-beast] Layer 11/28  pos=59  ATTN
+[sp-beast] Layer 21/28  pos=59  ATTN
+[sp-beast] Layer 28/28  pos=59  ATTN
+[sp-beast] Prefill done: 52.6 ms (18.99 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=60  ATTN
+[sp-beast] Layer 11/28  pos=60  ATTN
+[sp-beast] Layer 21/28  pos=60  ATTN
+[sp-beast] Layer 28/28  pos=60  ATTN
+[sp-beast] Token 1: id= 96756  54 ms  (18.53 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            37.1                       ║
+║  Inference:       53.98 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     52.6 ms ( 18.99 tok/s)  ║
+║  Decode:       1 tokens in     54.0 ms ( 18.53 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=61  ATTN
+[sp-beast] Layer 11/28  pos=61  ATTN
+[sp-beast] Layer 21/28  pos=61  ATTN
+[sp-beast] Layer 28/28  pos=61  ATTN
+[sp-beast] Prefill done: 55.9 ms (17.89 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=62  ATTN
+[sp-beast] Layer 11/28  pos=62  ATTN
+[sp-beast] Layer 21/28  pos=62  ATTN
+[sp-beast] Layer 28/28  pos=62  ATTN
+[sp-beast] Token 1: id= 48687  56 ms  (17.95 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            35.9                       ║
+║  Inference:       55.70 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     55.9 ms ( 17.89 tok/s)  ║
+║  Decode:       1 tokens in     55.7 ms ( 17.95 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=63  ATTN
+[sp-beast] Layer 11/28  pos=63  ATTN
+[sp-beast] Layer 21/28  pos=63  ATTN
+[sp-beast] Layer 28/28  pos=63  ATTN
+[sp-beast] Prefill done: 42.8 ms (23.34 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=64  ATTN
+[sp-beast] Layer 11/28  pos=64  ATTN
+[sp-beast] Layer 21/28  pos=64  ATTN
+[sp-beast] Layer 28/28  pos=64  ATTN
+[sp-beast] Token 1: id= 94710  48 ms  (20.73 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            41.5                       ║
+║  Inference:       48.23 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     42.8 ms ( 23.34 tok/s)  ║
+║  Decode:       1 tokens in     48.2 ms ( 20.73 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=65  ATTN
+[sp-beast] Layer 11/28  pos=65  ATTN
+[sp-beast] Layer 21/28  pos=65  ATTN
+[sp-beast] Layer 28/28  pos=65  ATTN
+[sp-beast] Prefill done: 43.6 ms (22.96 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=66  ATTN
+[sp-beast] Layer 11/28  pos=66  ATTN
+[sp-beast] Layer 21/28  pos=66  ATTN
+[sp-beast] Layer 28/28  pos=66  ATTN
+[sp-beast] Token 1: id= 41243  35 ms  (28.74 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            57.5                       ║
+║  Inference:       34.80 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     43.6 ms ( 22.96 tok/s)  ║
+║  Decode:       1 tokens in     34.8 ms ( 28.74 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=67  ATTN
+[sp-beast] Layer 11/28  pos=67  ATTN
+[sp-beast] Layer 21/28  pos=67  ATTN
+[sp-beast] Layer 28/28  pos=67  ATTN
+[sp-beast] Prefill done: 45.5 ms (22.00 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=68  ATTN
+[sp-beast] Layer 11/28  pos=68  ATTN
+[sp-beast] Layer 21/28  pos=68  ATTN
+[sp-beast] Layer 28/28  pos=68  ATTN
+[sp-beast] Token 1: id= 77656  36 ms  (27.58 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            55.2                       ║
+║  Inference:       36.26 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     45.5 ms ( 22.00 tok/s)  ║
+║  Decode:       1 tokens in     36.3 ms ( 27.58 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/40  pos=21  SSM
+[sp-beast] Layer 11/40  pos=21  SSM
+[sp-beast] Layer 21/40  pos=21  SSM
+[sp-beast] Layer 31/40  pos=21  SSM
+[sp-beast] Layer 40/40  pos=21  ATTN
+[sp-beast] Prefill done: 103.0 ms (9.71 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/40  pos=22  SSM
+[sp-beast] Layer 11/40  pos=22  SSM
+[sp-beast] Layer 21/40  pos=22  SSM
+[sp-beast] Layer 31/40  pos=22  SSM
+[sp-beast] Layer 40/40  pos=22  ATTN
+[sp-beast] Token 1: id= 14819  117 ms  (5.61 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:             82                       ║
+║  Tok/s:           459.9                       ║
+║  Inference:      178.29 ms                    ║
+║  Barrier:          4.48 ms (avg 5 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      20186.19 MB
+GGUF version:   3
+Tensors:        31453
+Architecture:   qwen35moe
+Model:          40 layers, 16 heads (2 KV), embd=2048
+Head dim:       128
+n_ff:           0
+RoPE freq_base: 10000000.0
+RoPE dim:       64 (mRoPE partial=YES)
+RMS norm eps:   1.0e-06
+Hybrid SSM:     YES (full_attn every 4 layers)
+SSM:            state=128 conv=4 inner=4096 groups=16 dt_rank=32
+Attn key/val:   256 / 256 per head
+DAX enabled:    no (page cache)
+MoE experts:    256 (top-8), 0 shared
+  Layer  0: 256/256 experts complete
+  Layer 39: 256/256 experts complete
+  Total: 10240/10240 expert slots populated
+Boot timing:    map=7088.81 ms, parse=1.92 ms, index=6.37 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      4.00 MB (2097152 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       920
+Avg wait:       4.9 us
+Min/Max wait:   1 / 171 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in    103.0 ms (  9.71 tok/s)  ║
+║  Decode:       1 tokens in    178.3 ms (  5.61 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=69  ATTN
+[sp-beast] Layer 11/28  pos=69  ATTN
+[sp-beast] Layer 21/28  pos=69  ATTN
+[sp-beast] Layer 28/28  pos=69  ATTN
+[sp-beast] Prefill done: 48.3 ms (20.68 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=70  ATTN
+[sp-beast] Layer 11/28  pos=70  ATTN
+[sp-beast] Layer 21/28  pos=70  ATTN
+[sp-beast] Layer 28/28  pos=70  ATTN
+[sp-beast] Token 1: id= 95167  49 ms  (20.50 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            41.0                       ║
+║  Inference:       48.78 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     48.3 ms ( 20.68 tok/s)  ║
+║  Decode:       1 tokens in     48.8 ms ( 20.50 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=71  ATTN
+[sp-beast] Layer 11/28  pos=71  ATTN
+[sp-beast] Layer 21/28  pos=71  ATTN
+[sp-beast] Layer 28/28  pos=71  ATTN
+[sp-beast] Prefill done: 42.3 ms (23.64 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=72  ATTN
+[sp-beast] Layer 11/28  pos=72  ATTN
+[sp-beast] Layer 21/28  pos=72  ATTN
+[sp-beast] Layer 28/28  pos=72  ATTN
+[sp-beast] Token 1: id= 42370  39 ms  (25.59 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            51.2                       ║
+║  Inference:       39.09 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     42.3 ms ( 23.64 tok/s)  ║
+║  Decode:       1 tokens in     39.1 ms ( 25.59 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=73  ATTN
+[sp-beast] Layer 11/28  pos=73  ATTN
+[sp-beast] Layer 21/28  pos=73  ATTN
+[sp-beast] Layer 28/28  pos=73  ATTN
+[sp-beast] Prefill done: 47.4 ms (21.12 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=74  ATTN
+[sp-beast] Layer 11/28  pos=74  ATTN
+[sp-beast] Layer 21/28  pos=74  ATTN
+[sp-beast] Layer 28/28  pos=74  ATTN
+[sp-beast] Token 1: id=  6274  46 ms  (21.86 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            43.7                       ║
+║  Inference:       45.74 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     47.4 ms ( 21.12 tok/s)  ║
+║  Decode:       1 tokens in     45.7 ms ( 21.86 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=75  ATTN
+[sp-beast] Layer 11/28  pos=75  ATTN
+[sp-beast] Layer 21/28  pos=75  ATTN
+[sp-beast] Layer 28/28  pos=75  ATTN
+[sp-beast] Prefill done: 39.5 ms (25.35 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=76  ATTN
+[sp-beast] Layer 11/28  pos=76  ATTN
+[sp-beast] Layer 21/28  pos=76  ATTN
+[sp-beast] Layer 28/28  pos=76  ATTN
+[sp-beast] Token 1: id=115105  45 ms  (22.35 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            44.7                       ║
+║  Inference:       44.74 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     39.5 ms ( 25.35 tok/s)  ║
+║  Decode:       1 tokens in     44.7 ms ( 22.35 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=77  ATTN
+[sp-beast] Layer 11/28  pos=77  ATTN
+[sp-beast] Layer 21/28  pos=77  ATTN
+[sp-beast] Layer 28/28  pos=77  ATTN
+[sp-beast] Prefill done: 44.6 ms (22.43 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=78  ATTN
+[sp-beast] Layer 11/28  pos=78  ATTN
+[sp-beast] Layer 21/28  pos=78  ATTN
+[sp-beast] Layer 28/28  pos=78  ATTN
+[sp-beast] Token 1: id= 91010  49 ms  (20.59 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            41.2                       ║
+║  Inference:       48.57 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     44.6 ms ( 22.43 tok/s)  ║
+║  Decode:       1 tokens in     48.6 ms ( 20.59 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/40  pos=23  SSM
+[sp-beast] Layer 11/40  pos=23  SSM
+[sp-beast] Layer 21/40  pos=23  SSM
+[sp-beast] Layer 31/40  pos=23  SSM
+[sp-beast] Layer 40/40  pos=23  ATTN
+[sp-beast] Prefill done: 103.6 ms (9.65 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/40  pos=24  SSM
+[sp-beast] Layer 11/40  pos=24  SSM
+[sp-beast] Layer 21/40  pos=24  SSM
+[sp-beast] Layer 31/40  pos=24  SSM
+[sp-beast] Layer 40/40  pos=24  ATTN
+[sp-beast] Token 1: id=107312  140 ms  (4.90 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:             82                       ║
+║  Tok/s:           402.1                       ║
+║  Inference:      203.95 ms                    ║
+║  Barrier:          4.85 ms (avg 5 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      20186.19 MB
+GGUF version:   3
+Tensors:        31453
+Architecture:   qwen35moe
+Model:          40 layers, 16 heads (2 KV), embd=2048
+Head dim:       128
+n_ff:           0
+RoPE freq_base: 10000000.0
+RoPE dim:       64 (mRoPE partial=YES)
+RMS norm eps:   1.0e-06
+Hybrid SSM:     YES (full_attn every 4 layers)
+SSM:            state=128 conv=4 inner=4096 groups=16 dt_rank=32
+Attn key/val:   256 / 256 per head
+DAX enabled:    no (page cache)
+MoE experts:    256 (top-8), 0 shared
+  Layer  0: 256/256 experts complete
+  Layer 39: 256/256 experts complete
+  Total: 10240/10240 expert slots populated
+Boot timing:    map=7088.81 ms, parse=1.92 ms, index=6.37 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      4.00 MB (2097152 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       1000
+Avg wait:       4.8 us
+Min/Max wait:   1 / 171 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in    103.6 ms (  9.65 tok/s)  ║
+║  Decode:       1 tokens in    204.0 ms (  4.90 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=79  ATTN
+[sp-beast] Layer 11/28  pos=79  ATTN
+[sp-beast] Layer 21/28  pos=79  ATTN
+[sp-beast] Layer 28/28  pos=79  ATTN
+[sp-beast] Prefill done: 49.7 ms (20.13 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=80  ATTN
+[sp-beast] Layer 11/28  pos=80  ATTN
+[sp-beast] Layer 21/28  pos=80  ATTN
+[sp-beast] Layer 28/28  pos=80  ATTN
+[sp-beast] Token 1: id=109987  48 ms  (20.88 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            41.8                       ║
+║  Inference:       47.88 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     49.7 ms ( 20.13 tok/s)  ║
+║  Decode:       1 tokens in     47.9 ms ( 20.88 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=81  ATTN
+[sp-beast] Layer 11/28  pos=81  ATTN
+[sp-beast] Layer 21/28  pos=81  ATTN
+[sp-beast] Layer 28/28  pos=81  ATTN
+[sp-beast] Prefill done: 48.1 ms (20.78 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=82  ATTN
+[sp-beast] Layer 11/28  pos=82  ATTN
+[sp-beast] Layer 21/28  pos=82  ATTN
+[sp-beast] Layer 28/28  pos=82  ATTN
+[sp-beast] Token 1: id=114420  47 ms  (21.33 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            42.7                       ║
+║  Inference:       46.88 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     48.1 ms ( 20.78 tok/s)  ║
+║  Decode:       1 tokens in     46.9 ms ( 21.33 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=83  ATTN
+[sp-beast] Layer 11/28  pos=83  ATTN
+[sp-beast] Layer 21/28  pos=83  ATTN
+[sp-beast] Layer 28/28  pos=83  ATTN
+[sp-beast] Prefill done: 47.6 ms (21.02 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=84  ATTN
+[sp-beast] Layer 11/28  pos=84  ATTN
+[sp-beast] Layer 21/28  pos=84  ATTN
+[sp-beast] Layer 28/28  pos=84  ATTN
+[sp-beast] Token 1: id= 49253  48 ms  (20.91 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            41.8                       ║
+║  Inference:       47.81 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     47.6 ms ( 21.02 tok/s)  ║
+║  Decode:       1 tokens in     47.8 ms ( 20.91 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=85  ATTN
+[sp-beast] Layer 11/28  pos=85  ATTN
+[sp-beast] Layer 21/28  pos=85  ATTN
+[sp-beast] Layer 28/28  pos=85  ATTN
+[sp-beast] Prefill done: 50.6 ms (19.76 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=86  ATTN
+[sp-beast] Layer 11/28  pos=86  ATTN
+[sp-beast] Layer 21/28  pos=86  ATTN
+[sp-beast] Layer 28/28  pos=86  ATTN
+[sp-beast] Token 1: id=109342  53 ms  (18.89 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            37.8                       ║
+║  Inference:       52.95 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     50.6 ms ( 19.76 tok/s)  ║
+║  Decode:       1 tokens in     53.0 ms ( 18.89 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=87  ATTN
+[sp-beast] Layer 11/28  pos=87  ATTN
+[sp-beast] Layer 21/28  pos=87  ATTN
+[sp-beast] Layer 28/28  pos=87  ATTN
+[sp-beast] Prefill done: 39.9 ms (25.08 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=88  ATTN
+[sp-beast] Layer 11/28  pos=88  ATTN
+[sp-beast] Layer 21/28  pos=88  ATTN
+[sp-beast] Layer 28/28  pos=88  ATTN
+[sp-beast] Token 1: id= 77656  48 ms  (20.81 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            41.6                       ║
+║  Inference:       48.05 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     39.9 ms ( 25.08 tok/s)  ║
+║  Decode:       1 tokens in     48.1 ms ( 20.81 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/40  pos=25  SSM
+[sp-beast] Layer 11/40  pos=25  SSM
+[sp-beast] Layer 21/40  pos=25  SSM
+[sp-beast] Layer 31/40  pos=25  SSM
+[sp-beast] Layer 40/40  pos=25  ATTN
+[sp-beast] Prefill done: 126.0 ms (7.94 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/40  pos=26  SSM
+[sp-beast] Layer 11/40  pos=26  SSM
+[sp-beast] Layer 21/40  pos=26  SSM
+[sp-beast] Layer 31/40  pos=26  SSM
+[sp-beast] Layer 40/40  pos=26  ATTN
+[sp-beast] Token 1: id=190613  117 ms  (5.54 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:             82                       ║
+║  Tok/s:           453.9                       ║
+║  Inference:      180.66 ms                    ║
+║  Barrier:          5.22 ms (avg 5 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      20186.19 MB
+GGUF version:   3
+Tensors:        31453
+Architecture:   qwen35moe
+Model:          40 layers, 16 heads (2 KV), embd=2048
+Head dim:       128
+n_ff:           0
+RoPE freq_base: 10000000.0
+RoPE dim:       64 (mRoPE partial=YES)
+RMS norm eps:   1.0e-06
+Hybrid SSM:     YES (full_attn every 4 layers)
+SSM:            state=128 conv=4 inner=4096 groups=16 dt_rank=32
+Attn key/val:   256 / 256 per head
+DAX enabled:    no (page cache)
+MoE experts:    256 (top-8), 0 shared
+  Layer  0: 256/256 experts complete
+  Layer 39: 256/256 experts complete
+  Total: 10240/10240 expert slots populated
+Boot timing:    map=7088.81 ms, parse=1.92 ms, index=6.37 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      4.00 MB (2097152 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       1080
+Avg wait:       4.8 us
+Min/Max wait:   1 / 171 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in    126.0 ms (  7.94 tok/s)  ║
+║  Decode:       1 tokens in    180.7 ms (  5.54 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=89  ATTN
+[sp-beast] Layer 11/28  pos=89  ATTN
+[sp-beast] Layer 21/28  pos=89  ATTN
+[sp-beast] Layer 28/28  pos=89  ATTN
+[sp-beast] Prefill done: 46.5 ms (21.52 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=90  ATTN
+[sp-beast] Layer 11/28  pos=90  ATTN
+[sp-beast] Layer 21/28  pos=90  ATTN
+[sp-beast] Layer 28/28  pos=90  ATTN
+[sp-beast] Token 1: id= 75935  41 ms  (24.17 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            48.3                       ║
+║  Inference:       41.37 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     46.5 ms ( 21.52 tok/s)  ║
+║  Decode:       1 tokens in     41.4 ms ( 24.17 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=91  ATTN
+[sp-beast] Layer 11/28  pos=91  ATTN
+[sp-beast] Layer 21/28  pos=91  ATTN
+[sp-beast] Layer 28/28  pos=91  ATTN
+[sp-beast] Prefill done: 41.0 ms (24.38 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=92  ATTN
+[sp-beast] Layer 11/28  pos=92  ATTN
+[sp-beast] Layer 21/28  pos=92  ATTN
+[sp-beast] Layer 28/28  pos=92  ATTN
+[sp-beast] Token 1: id= 75935  42 ms  (23.56 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            47.1                       ║
+║  Inference:       42.44 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     41.0 ms ( 24.38 tok/s)  ║
+║  Decode:       1 tokens in     42.4 ms ( 23.56 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=93  ATTN
+[sp-beast] Layer 11/28  pos=93  ATTN
+[sp-beast] Layer 21/28  pos=93  ATTN
+[sp-beast] Layer 28/28  pos=93  ATTN
+[sp-beast] Prefill done: 45.4 ms (22.01 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=94  ATTN
+[sp-beast] Layer 11/28  pos=94  ATTN
+[sp-beast] Layer 21/28  pos=94  ATTN
+[sp-beast] Layer 28/28  pos=94  ATTN
+[sp-beast] Token 1: id=133345  41 ms  (24.13 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            48.3                       ║
+║  Inference:       41.43 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     45.4 ms ( 22.01 tok/s)  ║
+║  Decode:       1 tokens in     41.4 ms ( 24.13 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=95  ATTN
+[sp-beast] Layer 11/28  pos=95  ATTN
+[sp-beast] Layer 21/28  pos=95  ATTN
+[sp-beast] Layer 28/28  pos=95  ATTN
+[sp-beast] Prefill done: 46.3 ms (21.58 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=96  ATTN
+[sp-beast] Layer 11/28  pos=96  ATTN
+[sp-beast] Layer 21/28  pos=96  ATTN
+[sp-beast] Layer 28/28  pos=96  ATTN
+[sp-beast] Token 1: id= 47664  44 ms  (22.95 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            45.9                       ║
+║  Inference:       43.58 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     46.3 ms ( 21.58 tok/s)  ║
+║  Decode:       1 tokens in     43.6 ms ( 22.95 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=97  ATTN
+[sp-beast] Layer 11/28  pos=97  ATTN
+[sp-beast] Layer 21/28  pos=97  ATTN
+[sp-beast] Layer 28/28  pos=97  ATTN
+[sp-beast] Prefill done: 42.9 ms (23.33 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=98  ATTN
+[sp-beast] Layer 11/28  pos=98  ATTN
+[sp-beast] Layer 21/28  pos=98  ATTN
+[sp-beast] Layer 28/28  pos=98  ATTN
+[sp-beast] Token 1: id= 75737  40 ms  (24.91 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            49.8                       ║
+║  Inference:       40.14 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     42.9 ms ( 23.33 tok/s)  ║
+║  Decode:       1 tokens in     40.1 ms ( 24.91 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/40  pos=27  SSM
+[sp-beast] Layer 11/40  pos=27  SSM
+[sp-beast] Layer 21/40  pos=27  SSM
+[sp-beast] Layer 31/40  pos=27  SSM
+[sp-beast] Layer 40/40  pos=27  ATTN
+[sp-beast] Prefill done: 108.3 ms (9.23 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/40  pos=28  SSM
+[sp-beast] Layer 11/40  pos=28  SSM
+[sp-beast] Layer 21/40  pos=28  SSM
+[sp-beast] Layer 31/40  pos=28  SSM
+[sp-beast] Layer 40/40  pos=28  ATTN
+[sp-beast] Token 1: id= 51740  122 ms  (5.43 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:             82                       ║
+║  Tok/s:           445.6                       ║
+║  Inference:      184.00 ms                    ║
+║  Barrier:          5.57 ms (avg 5 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      20186.19 MB
+GGUF version:   3
+Tensors:        31453
+Architecture:   qwen35moe
+Model:          40 layers, 16 heads (2 KV), embd=2048
+Head dim:       128
+n_ff:           0
+RoPE freq_base: 10000000.0
+RoPE dim:       64 (mRoPE partial=YES)
+RMS norm eps:   1.0e-06
+Hybrid SSM:     YES (full_attn every 4 layers)
+SSM:            state=128 conv=4 inner=4096 groups=16 dt_rank=32
+Attn key/val:   256 / 256 per head
+DAX enabled:    no (page cache)
+MoE experts:    256 (top-8), 0 shared
+  Layer  0: 256/256 experts complete
+  Layer 39: 256/256 experts complete
+  Total: 10240/10240 expert slots populated
+Boot timing:    map=7088.81 ms, parse=1.92 ms, index=6.37 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      4.00 MB (2097152 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       1160
+Avg wait:       4.8 us
+Min/Max wait:   1 / 171 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in    108.3 ms (  9.23 tok/s)  ║
+║  Decode:       1 tokens in    184.0 ms (  5.43 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=99  ATTN
+[sp-beast] Layer 11/28  pos=99  ATTN
+[sp-beast] Layer 21/28  pos=99  ATTN
+[sp-beast] Layer 28/28  pos=99  ATTN
+[sp-beast] Prefill done: 52.8 ms (18.96 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=100  ATTN
+[sp-beast] Layer 11/28  pos=100  ATTN
+[sp-beast] Layer 21/28  pos=100  ATTN
+[sp-beast] Layer 28/28  pos=100  ATTN
+[sp-beast] Token 1: id= 85095  50 ms  (19.82 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            39.6                       ║
+║  Inference:       50.46 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     52.8 ms ( 18.96 tok/s)  ║
+║  Decode:       1 tokens in     50.5 ms ( 19.82 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=101  ATTN
+[sp-beast] Layer 11/28  pos=101  ATTN
+[sp-beast] Layer 21/28  pos=101  ATTN
+[sp-beast] Layer 28/28  pos=101  ATTN
+[sp-beast] Prefill done: 51.4 ms (19.45 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=102  ATTN
+[sp-beast] Layer 11/28  pos=102  ATTN
+[sp-beast] Layer 21/28  pos=102  ATTN
+[sp-beast] Layer 28/28  pos=102  ATTN
+[sp-beast] Token 1: id= 44732  54 ms  (18.40 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            36.8                       ║
+║  Inference:       54.34 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     51.4 ms ( 19.45 tok/s)  ║
+║  Decode:       1 tokens in     54.3 ms ( 18.40 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=103  ATTN
+[sp-beast] Layer 11/28  pos=103  ATTN
+[sp-beast] Layer 21/28  pos=103  ATTN
+[sp-beast] Layer 28/28  pos=103  ATTN
+[sp-beast] Prefill done: 52.0 ms (19.24 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=104  ATTN
+[sp-beast] Layer 11/28  pos=104  ATTN
+[sp-beast] Layer 21/28  pos=104  ATTN
+[sp-beast] Layer 28/28  pos=104  ATTN
+[sp-beast] Token 1: id=112570  51 ms  (19.62 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            39.2                       ║
+║  Inference:       50.96 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     52.0 ms ( 19.24 tok/s)  ║
+║  Decode:       1 tokens in     51.0 ms ( 19.62 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=105  ATTN
+[sp-beast] Layer 11/28  pos=105  ATTN
+[sp-beast] Layer 21/28  pos=105  ATTN
+[sp-beast] Layer 28/28  pos=105  ATTN
+[sp-beast] Prefill done: 56.2 ms (17.78 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=106  ATTN
+[sp-beast] Layer 11/28  pos=106  ATTN
+[sp-beast] Layer 21/28  pos=106  ATTN
+[sp-beast] Layer 28/28  pos=106  ATTN
+[sp-beast] Token 1: id=138985  52 ms  (19.15 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            38.3                       ║
+║  Inference:       52.23 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     56.2 ms ( 17.78 tok/s)  ║
+║  Decode:       1 tokens in     52.2 ms ( 19.15 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=107  ATTN
+[sp-beast] Layer 11/28  pos=107  ATTN
+[sp-beast] Layer 21/28  pos=107  ATTN
+[sp-beast] Layer 28/28  pos=107  ATTN
+[sp-beast] Prefill done: 52.5 ms (19.06 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/28  pos=108  ATTN
+[sp-beast] Layer 11/28  pos=108  ATTN
+[sp-beast] Layer 21/28  pos=108  ATTN
+[sp-beast] Layer 28/28  pos=108  ATTN
+[sp-beast] Token 1: id=111763  49 ms  (20.29 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              2                       ║
+║  Tok/s:            40.6                       ║
+║  Inference:       49.29 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     52.5 ms ( 19.06 tok/s)  ║
+║  Decode:       1 tokens in     49.3 ms ( 20.29 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/40  pos=29  SSM
+[sp-beast] Layer 11/40  pos=29  SSM
+[sp-beast] Layer 21/40  pos=29  SSM
+[sp-beast] Layer 31/40  pos=29  SSM
+[sp-beast] Layer 40/40  pos=29  ATTN
+[sp-beast] Prefill done: 109.0 ms (9.17 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] Layer 1/40  pos=30  SSM
+[sp-beast] Layer 11/40  pos=30  SSM
+[sp-beast] Layer 21/40  pos=30  SSM
+[sp-beast] Layer 31/40  pos=30  SSM
+[sp-beast] Layer 40/40  pos=30  ATTN
+[sp-beast] Token 1: id=155078  107 ms  (5.94 tok/s avg)
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:             82                       ║
+║  Tok/s:           487.4                       ║
+║  Inference:      168.25 ms                    ║
+║  Barrier:          5.91 ms (avg 5 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      20186.19 MB
+GGUF version:   3
+Tensors:        31453
+Architecture:   qwen35moe
+Model:          40 layers, 16 heads (2 KV), embd=2048
+Head dim:       128
+n_ff:           0
+RoPE freq_base: 10000000.0
+RoPE dim:       64 (mRoPE partial=YES)
+RMS norm eps:   1.0e-06
+Hybrid SSM:     YES (full_attn every 4 layers)
+SSM:            state=128 conv=4 inner=4096 groups=16 dt_rank=32
+Attn key/val:   256 / 256 per head
+DAX enabled:    no (page cache)
+MoE experts:    256 (top-8), 0 shared
+  Layer  0: 256/256 experts complete
+  Layer 39: 256/256 experts complete
+  Total: 10240/10240 expert slots populated
+Boot timing:    map=7088.81 ms, parse=1.92 ms, index=6.37 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      4.00 MB (2097152 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       1240
+Avg wait:       4.8 us
+Min/Max wait:   1 / 171 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in    109.0 ms (  9.17 tok/s)  ║
+║  Decode:       1 tokens in    168.2 ms (  5.94 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=109  ATTN
+[sp-beast] Layer 11/28  pos=109  ATTN
+[sp-beast] Layer 21/28  pos=109  ATTN
+[sp-beast] Layer 28/28  pos=109  ATTN
+[sp-beast] Prefill done: 44.9 ms (22.28 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] EOS token 0 at position 0
+
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              1                       ║
+║  Tok/s:             0.0                       ║
+║  Inference:        0.00 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     44.9 ms ( 22.28 tok/s)  ║
+║  Decode:       1 tokens in      0.0 ms (  0.00 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen3                                       ║
+║  Layers:  28  Embd: 1024  Vocab: 151936              ║
+║  KV cache: 28 attn × 1024 × 256 ctx = 28.0 MB         ║
+╚══════════════════════════════════════════════════════╝
+
+[sp-beast] Prefill: 1 tokens
+
+[sp-beast] Layer 1/28  pos=110  ATTN
+[sp-beast] Layer 11/28  pos=110  ATTN
+[sp-beast] Layer 21/28  pos=110  ATTN
+[sp-beast] Layer 28/28  pos=110  ATTN
+[sp-beast] Prefill done: 46.5 ms (21.50 tok/s)
+[sp-beast] Generating 1 tokens...
+
+[sp-beast] EOS token 0 at position 0
+
+
+
+╔══════════════════════════════════════════════╗
+║  BEAST CANYON ENGINE STATUS                  ║
+╠══════════════════════════════════════════════╣
+║  Tokens:              1                       ║
+║  Tok/s:             0.0                       ║
+║  Inference:        0.00 ms                    ║
+║  Barrier:          0.00 ms (avg 0 us)       ║
+╠══════════════════════════════════════════════╣
+
+=== OPTANE RESERVOIR STATUS ===
+File size:      378.33 MB
+GGUF version:   3
+Tensors:        310
+Architecture:   qwen3
+Model:          28 layers, 16 heads (8 KV), embd=1024
+Head dim:       64
+n_ff:           3072
+RoPE freq_base: 1000000.0
+RoPE dim:       0 (mRoPE partial=no)
+RMS norm eps:   1.0e-06
+DAX enabled:    no (page cache)
+Boot timing:    map=395.03 ms, parse=1.18 ms, index=0.00 ms
+==============================
+
+
+=== SHREDDER STATUS ===
+AVX-512F:     YES
+AVX-512BW:    YES
+AVX-512 FP16: no (F16C)
+Staging:      224.00 MB (117440512 elements)
+Calls:        0
+Elements:     0
+Bytes in:     0.00 MB
+Time:         0.00 ms
+Throughput:   0.00 GB/s
+========================
+
+
+=== HETEROGENEOUS BARRIER STATUS ===
+GPUs:           2
+  GPU[0]: NVIDIA GeForce RTX 2060
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+  GPU[1]: Intel UHD 750 (M2 via L0 Ring Bus)
+    Dispatches:  0
+    Dispatch us: 0
+    Wait us:     0
+Barriers:       0
+Avg wait:       0.0 us
+Min/Max wait:   18446744073709551615 / 0 us
+Pre-shred time: 0.00 ms (overlapped with GPU)
+====================================
+
+
+╔══════════════════════════════════════════════════════╗
+║  RESULTS                                              ║
+║  Prefill:      1 tokens in     46.5 ms ( 21.50 tok/s)  ║
+║  Decode:       1 tokens in      0.0 ms (  0.00 tok/s)  ║
+║  CRT shreds: 0  elements: 0                       ║
+╚══════════════════════════════════════════════════════╝
+[sp-engine] spec chat done: produced=11  drafted=40  accepted=0  accept_rate=0.0%  K=4
+Once upon a time in a faraway kingdom臥 videorparalleled.optionRootElementacyitled第二百五γηrypton ско
+[sp-beast] Shutting down Beast Canyon engine...
+[shadow-steal] steals=0 hits=0 (0.0%) misses=0 aborts=0
+[shadow-steal] net_saved=+0.0ms  steal_time=0.0ms  flush_time=0.0ms
+[shadow-steal] UHD utilisation: 0.0%  tau=0.700
+[sp-optane] Releasing reservoir (tier=RAM)...
+[sp-beast] Engine shutdown complete.
+[sp-beast] Shutting down Beast Canyon engine...
+[shadow-steal] steals=0 hits=0 (0.0%) misses=0 aborts=0
+[shadow-steal] net_saved=+0.0ms  steal_time=0.0ms  flush_time=0.0ms
+[shadow-steal] UHD utilisation: 0.0%  tau=0.700
+[sp-optane] Releasing reservoir (tier=RAM)...
+[sp-beast] Engine shutdown complete.

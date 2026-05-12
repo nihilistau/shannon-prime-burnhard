@@ -95,6 +95,15 @@ struct Config {
     // This replaces the normal forward path for MoE layers.
     std::string beast_gguf_path;
 
+    // Optional small draft model for speculative decode. When set,
+    // chat mode loads a second sp_beast_engine_t bound to this GGUF
+    // (typically a 0.5-1B param model) and runs it to propose K draft
+    // tokens per round; the main model then verifies them in a single
+    // batched forward (1 sync amortised over K tokens). Accepted prefix
+    // is appended, the first divergence aborts the rest.
+    std::string draft_gguf_path;
+    int         draft_k = 4;            // tokens drafted per verification round
+
     // Furnace dispatch — replaces ggml_mul_mat_id for routed-expert FFN
     // matmuls with the BurnHard residue-matmul host kernel. Three modes:
     //

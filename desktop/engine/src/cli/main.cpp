@@ -407,6 +407,8 @@ static int parse_config_flag(sp::engine::Config& cfg, const char* a, const char*
         }
     }
     if (a_eq("--beast") && has_next)              { cfg.beast_gguf_path = next; return 2; }
+    if (a_eq("--draft") && has_next)              { cfg.draft_gguf_path = next; return 2; }
+    if (a_eq("--draft-k") && has_next)            { cfg.draft_k = std::max(1, std::atoi(next)); return 2; }
     if (a_eq("--s12-threshold") && has_next) { cfg.s12_threshold = (float)std::atof(next); return 2; }
     if (a_eq("--s12-sys2")      && has_next) { cfg.s12_sys2 = next; return 2; }
 
@@ -1317,6 +1319,45 @@ int main(int argc, char** argv) {
                 }
             }
         } beast_guard{ &beast_engine, &beast_hb, &beast_active };
+
+        // ── Draft engine (speculative decode) ──
+        // When --draft <gguf> is set, boot a SECOND Beast Canyon engine
+        // bound to the small draft model. The draft proposes K tokens
+        // per round; the main engine verifies them with one batched
+        // forward (one cudaStreamSynchronize amortised over K accepted
+        // tokens).
+        // sp_beast_engine_t is ~6.5 MB (embeds the 32K-tensor reservoir
+        // table) — heap-alloc to avoid blowing the 32 MB stack budget
+        // when paired with the main engine.
+        std::unique_ptr<sp_beast_engine_t> draft_engine_owned;
+        sp_beast_engine_t* draft_engine = nullptr;
+        bool draft_active = false;
+        if (!cc.draft_gguf_path.empty()) {
+            draft_engine_owned.reset(new sp_beast_engine_t{});
+            draft_engine = draft_engine_owned.get();
+            std::memset(draft_engine, 0, sizeof(*draft_engine));
+            sp_beast_config_t dcfg; sp_beast_config_init(&dcfg);
+            dcfg.gguf_path      = cc.draft_gguf_path.c_str();
+            dcfg.force_cpu_only = false;
+            const int rc = sp_beast_init(draft_engine, &dcfg);
+            if (rc == 0) {
+                draft_active = true;
+                std::fprintf(stderr,
+                    "[sp-engine] Draft engine ARMED via --draft: %s (K=%d)\n",
+                    cc.draft_gguf_path.c_str(), cc.draft_k);
+            } else {
+                std::fprintf(stderr,
+                    "[sp-engine] --draft init failed (rc=%d) — continuing "
+                    "without speculative decode\n", rc);
+            }
+        }
+        struct DraftGuard {
+            sp_beast_engine_t* eng;
+            bool* active;
+            ~DraftGuard() {
+                if (*active && eng) { sp_beast_free(eng); *active = false; }
+            }
+        } draft_guard{ draft_engine, &draft_active };
 #endif
 
         // Prefer GPU-resident cache when backend is GPU + ship path.
@@ -1433,7 +1474,7 @@ int main(int argc, char** argv) {
         // tokenise prompt, hand to Beast, detokenise output, print.
         // sp_beast_generate manages its own KV cache, sidecar speculative
         // decode, Optane reservoir reads, and (eventually) dual-GPU dispatch.
-        if (beast_active) {
+        if (beast_active && !draft_active) {
             std::printf("%s", text.c_str());
             std::fflush(stdout);
             // sp_beast_generate uses C int (4-byte) for token IDs — convert
@@ -1457,6 +1498,143 @@ int main(int argc, char** argv) {
             std::fprintf(stderr,
                 "[sp-engine] beast chat done: prompt=%d generated=%d\n",
                 n_prompt, n_gen);
+            return 0;
+        }
+
+        // ── Speculative decode path ──
+        // When --beast AND --draft are both set, draft K candidates per
+        // round through the small model, then verify them in the main
+        // model. Sequential verify here is the correctness scaffold:
+        // each round costs K_draft + K_main forwards. The win comes when
+        // K_accepted >= 2 — even sequential, we still amortise the
+        // tokenizer + sampler overhead and CPU branch-prediction warmup.
+        // Batched verify (one main forward over K tokens, K-1 syncs saved)
+        // is the next commit; the protocol below is unchanged when that
+        // lands.
+        if (beast_active && draft_active) {
+            std::printf("%s", text.c_str());
+            std::fflush(stdout);
+
+            // Engage session mode on BOTH engines so KV cache + SSM state
+            // persist across consecutive sp_beast_generate calls. Without
+            // this each call would alloc/prefill/free, throwing away the
+            // recurrence state and forcing quadratic-cost re-prefill.
+            beast_engine.beast_session_mode = 1;
+            draft_engine->beast_session_mode = 1;
+
+            // Helper: one forward step. Calls sp_beast_forward DIRECTLY —
+            // sp_beast_generate would over-advance state by an extra
+            // forward after sampling. Returns argmax token.
+            auto step_argmax = [](sp_beast_engine_t* eng, int in_token) -> int {
+                if (sp_beast_forward(eng, in_token, eng->beast_logits) != 0) return 0;
+                const int vocab = (int)eng->reservoir.vocab_size;
+                int best = 0; float bv = eng->beast_logits[0];
+                for (int i = 1; i < vocab; ++i) {
+                    if (eng->beast_logits[i] > bv) { bv = eng->beast_logits[i]; best = i; }
+                }
+                return best;
+            };
+            auto& step = step_argmax;
+
+            // Vocab-compatibility guard. Spec is structurally impossible
+            // when the two models have different tokenizers.
+            if (beast_engine.reservoir.vocab_size !=
+                draft_engine->reservoir.vocab_size) {
+                std::fprintf(stderr,
+                    "[sp-engine] WARNING: vocab mismatch — main=%llu draft=%llu\n"
+                    "[sp-engine]   Speculative decode will accept 0%% of drafts.\n"
+                    "[sp-engine]   Use a draft model from the SAME family "
+                    "(same tokenizer + vocab size) as the main model.\n",
+                    (unsigned long long)beast_engine.reservoir.vocab_size,
+                    (unsigned long long)draft_engine->reservoir.vocab_size);
+            }
+
+            // Prefill BOTH engines with the prompt (sequentially). Session
+            // mode means the prompt is processed once and the state is kept.
+            int last_accepted = ids.empty() ? 0 : (int)ids.back();
+            {
+                std::vector<int> prompt_ints(ids.begin(), ids.end());
+                std::vector<int> tmp(1, 0);
+                sp_beast_generate(&beast_engine,
+                                    prompt_ints.data(), n_prompt,
+                                    tmp.data(), 1, 0.0f, 0.0f);
+                last_accepted = tmp[0];
+                sp_beast_generate(draft_engine,
+                                    prompt_ints.data(), n_prompt,
+                                    tmp.data(), 1, 0.0f, 0.0f);
+                std::vector<int32_t> one1 = { (int32_t)last_accepted };
+                std::printf("%s", tk->decode(one1).c_str());
+                std::fflush(stdout);
+            }
+
+            const int K = std::max(1, cc.draft_k);
+            int produced = 1;  // already emitted the first token above
+            int accepted_total = 0, drafted_total = 0;
+
+            while (produced < n_predict) {
+                // 1) Draft K tokens conditioned on last_accepted.
+                std::vector<int> drafts;
+                drafts.reserve((size_t)K);
+                int cursor = last_accepted;
+                for (int i = 0; i < K && (produced + (int)drafts.size()) < n_predict; ++i) {
+                    int d = step(draft_engine, cursor);
+                    if (d == 0) break;
+                    drafts.push_back(d);
+                    cursor = d;
+                }
+                drafted_total += (int)drafts.size();
+                if (drafts.empty()) break;
+
+                // 2) Verify sequentially via main: starting at last_accepted,
+                //    main(last_accepted) -> v0, compare to drafts[0].
+                int in_tok = last_accepted;
+                int n_accepted = 0;
+                int correction = 0;
+                bool diverged = false;
+                for (size_t i = 0; i < drafts.size(); ++i) {
+                    int v = step(&beast_engine, in_tok);
+                    if (v == drafts[i]) {
+                        n_accepted++;
+                        in_tok = drafts[i];
+                    } else {
+                        correction = v;
+                        diverged   = true;
+                        break;
+                    }
+                }
+                // 3) Emit accepted draft tokens + (possibly) main's correction.
+                for (int i = 0; i < n_accepted && produced < n_predict; ++i) {
+                    std::vector<int32_t> one = { (int32_t)drafts[(size_t)i] };
+                    std::printf("%s", tk->decode(one).c_str());
+                    std::fflush(stdout);
+                    produced++;
+                    last_accepted = drafts[(size_t)i];
+                }
+                if (diverged && produced < n_predict) {
+                    std::vector<int32_t> one = { (int32_t)correction };
+                    std::printf("%s", tk->decode(one).c_str());
+                    std::fflush(stdout);
+                    produced++;
+                    last_accepted = correction;
+                    // Draft engine has drafted past the divergence — its
+                    // KV / SSM state is now ahead of truth. Re-seed it
+                    // by running the corrected token through it.
+                    step(draft_engine, correction);
+                }
+                accepted_total += n_accepted;
+            }
+            std::printf("\n"); std::fflush(stdout);
+            const double accept_rate = drafted_total > 0
+                ? 100.0 * (double)accepted_total / (double)drafted_total
+                : 0.0;
+            std::fprintf(stderr,
+                "[sp-engine] spec chat done: produced=%d  drafted=%d  "
+                "accepted=%d  accept_rate=%.1f%%  K=%d\n",
+                produced, drafted_total, accepted_total, accept_rate, K);
+            // Release session buffers (BeastGuard / DraftGuard then frees
+            // engine itself via sp_beast_free).
+            sp_beast_session_end(&beast_engine);
+            if (draft_engine) sp_beast_session_end(draft_engine);
             return 0;
         }
 #endif

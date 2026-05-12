@@ -223,6 +223,16 @@ typedef struct sp_beast_engine_t {
     // `sp_beast_gpu_ctx_t *` from sp_beast_gpu.h.
     void        *beast_gpu_ctx;
     int          beast_gpu_hot_layers;  // N from env; 0 if disabled
+
+    // Session mode — when non-zero, sp_beast_generate does NOT free its
+    // per-token state (KV cache, SSM state, scratch buffers) at the end
+    // of the call AND does NOT reset beast_n_pos to 0. This lets a
+    // caller string several sp_beast_generate calls together with state
+    // persisting across them — the model behaves as one continuous
+    // conversation. Required for speculative decode (draft + verify on
+    // the same engine, accept-prefix-then-continue without reprefill).
+    // sp_beast_session_end() releases the buffers explicitly.
+    int          beast_session_mode;
 } sp_beast_engine_t;
 
 // ============================================================================
@@ -279,6 +289,12 @@ int sp_beast_generate(sp_beast_engine_t *engine,
                       const int *prompt_tokens, int n_prompt,
                       int *output_tokens, int max_tokens,
                       float temperature, float top_p);
+
+// Free per-session state buffers (KV cache, SSM state, scratch). Only
+// needed when beast_session_mode was set and sp_beast_generate left the
+// buffers alive across calls. Safe to call multiple times; safe with
+// session_mode off (no-op).
+void sp_beast_session_end(sp_beast_engine_t *engine);
 
 // ============================================================================
 // Public API — Expert Routing

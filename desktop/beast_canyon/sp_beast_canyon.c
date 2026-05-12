@@ -3431,25 +3431,32 @@ int sp_beast_generate(sp_beast_engine_t *engine,
     int n_attn_layers = (attn_interval > 1) ? (n_layer / attn_interval) : n_layer;
     if (n_attn_layers < 1) n_attn_layers = n_layer;
     engine->beast_max_ctx = 256;
-    engine->beast_n_pos   = 0;
+    // In session mode, preserve beast_n_pos across consecutive
+    // sp_beast_generate calls so the KV cache/SSM state continue from
+    // where we left off. Out of session mode (one-shot generate), reset
+    // to 0 like before.
+    if (!engine->beast_session_mode) {
+        engine->beast_n_pos = 0;
+    }
 
     size_t kv_size = (size_t)n_attn_layers * kv_dim * engine->beast_max_ctx;
-    engine->beast_k_cache = (float *)calloc(kv_size, sizeof(float));
-    engine->beast_v_cache = (float *)calloc(kv_size, sizeof(float));
+    if (!engine->beast_k_cache) {
+        engine->beast_k_cache = (float *)calloc(kv_size, sizeof(float));
+    }
+    if (!engine->beast_v_cache) {
+        engine->beast_v_cache = (float *)calloc(kv_size, sizeof(float));
+    }
     int scratch_dim = (vocab > n_embd) ? vocab : n_embd;
     // scratch needs to hold at least conv_dim (8192) for GDN matvec
     int gdn_conv_dim = (int)res->ssm_inner_size + 2 * (int)res->ssm_n_groups * (int)res->ssm_state_size;
     if (gdn_conv_dim > scratch_dim) scratch_dim = gdn_conv_dim;
-    engine->beast_scratch = (float *)malloc((size_t)scratch_dim * sizeof(float));
-    engine->beast_x       = (float *)malloc((size_t)n_embd * sizeof(float));
-    engine->beast_xn      = (float *)malloc((size_t)n_embd * sizeof(float));
-    engine->beast_logits  = (float *)malloc((size_t)vocab * sizeof(float));
+    if (!engine->beast_scratch) engine->beast_scratch = (float *)malloc((size_t)scratch_dim * sizeof(float));
+    if (!engine->beast_x)       engine->beast_x       = (float *)malloc((size_t)n_embd * sizeof(float));
+    if (!engine->beast_xn)      engine->beast_xn      = (float *)malloc((size_t)n_embd * sizeof(float));
+    if (!engine->beast_logits)  engine->beast_logits  = (float *)malloc((size_t)vocab * sizeof(float));
 
     // GDN (Gated Delta Net) recurrent state for hybrid SSM layers
     // Matches engine's GdnStateCache from gdn_state.h
-    engine->beast_conv_state = NULL;
-    engine->beast_ssm_state  = NULL;
-    engine->beast_n_ssm_layers = 0;
     if (res->is_hybrid && res->ssm_state_size > 0) {
         int d_inner    = (int)res->ssm_inner_size;    // 4096
         int conv_k     = (int)res->ssm_conv_kernel;   // 4
@@ -3464,8 +3471,12 @@ int sp_beast_generate(sp_beast_engine_t *engine,
         size_t conv_per_layer = (size_t)(conv_k - 1) * conv_channels;     // 3*8192 = 24576
         size_t ssm_per_layer  = (size_t)dt_rank * head_v_dim * head_v_dim; // 32*128*128 = 524288
 
-        engine->beast_conv_state = (float *)calloc((size_t)n_layer * conv_per_layer, sizeof(float));
-        engine->beast_ssm_state  = (float *)calloc((size_t)n_layer * ssm_per_layer, sizeof(float));
+        if (!engine->beast_conv_state) {
+            engine->beast_conv_state = (float *)calloc((size_t)n_layer * conv_per_layer, sizeof(float));
+        }
+        if (!engine->beast_ssm_state) {
+            engine->beast_ssm_state  = (float *)calloc((size_t)n_layer * ssm_per_layer, sizeof(float));
+        }
 
         if (!engine->beast_conv_state || !engine->beast_ssm_state) {
             fprintf(stderr, "[sp-beast] Generate: OOM allocating GDN state "
@@ -3688,6 +3699,25 @@ int sp_beast_generate(sp_beast_engine_t *engine,
     fprintf(stderr, "╚══════════════════════════════════════════════════════╝\n");
 
 cleanup:
+    if (!engine->beast_session_mode) {
+        // One-shot generate: free everything as before. Session-mode
+        // callers reach the same buffers across multiple sp_beast_generate
+        // invocations and must release via sp_beast_session_end().
+        free(engine->beast_k_cache);    engine->beast_k_cache = NULL;
+        free(engine->beast_v_cache);    engine->beast_v_cache = NULL;
+        free(engine->beast_conv_state); engine->beast_conv_state = NULL;
+        free(engine->beast_ssm_state);  engine->beast_ssm_state = NULL;
+        free(engine->beast_scratch);    engine->beast_scratch = NULL;
+        free(engine->beast_x);          engine->beast_x = NULL;
+        free(engine->beast_xn);         engine->beast_xn = NULL;
+        free(engine->beast_logits);     engine->beast_logits = NULL;
+    }
+
+    return n_generated;
+}
+
+void sp_beast_session_end(sp_beast_engine_t *engine) {
+    if (!engine) return;
     free(engine->beast_k_cache);    engine->beast_k_cache = NULL;
     free(engine->beast_v_cache);    engine->beast_v_cache = NULL;
     free(engine->beast_conv_state); engine->beast_conv_state = NULL;
@@ -3696,8 +3726,8 @@ cleanup:
     free(engine->beast_x);          engine->beast_x = NULL;
     free(engine->beast_xn);         engine->beast_xn = NULL;
     free(engine->beast_logits);     engine->beast_logits = NULL;
-
-    return n_generated;
+    engine->beast_n_pos = 0;
+    engine->beast_session_mode = 0;
 }
 
 // ============================================================================
