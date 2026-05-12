@@ -166,6 +166,13 @@ typedef struct {
     uint64_t  misses;
 } beast_dequant_cache_t;
 
+// Forward decls — beast_row_bytes / beast_dequant_row are defined further
+// down with the rest of the dequant kernels. Hoisted up here so
+// sp_beast_init's fp32 pre-stage block (which runs much earlier in the
+// file than the kernel definitions) can call them.
+static size_t beast_row_bytes(uint32_t type, int ne0);
+static void   beast_dequant_row(const void *src, float *dst, uint32_t type, int n);
+
 // ============================================================================
 // Boot sequence
 // ============================================================================
@@ -197,6 +204,70 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
     if (rc != 0) {
         fprintf(stderr, "[BOOT] FATAL: reservoir load failed (rc=%d)\n", rc);
         return rc;
+    }
+
+    // ── Stage 1.5: Pre-stage hot non-expert tensors as fp32 ─────────
+    // Disabled by default. Found out empirically that fp32 (4 B/elem)
+    // is 7x bigger than Q4_K (~0.56 B/elem) and we're memory-bandwidth
+    // bound, so reading the staged fp32 buffer costs MORE bus time than
+    // reading Q4_K + paying for AVX-512 dequant. The right home for
+    // pre-staged fp32 is GPU VRAM (336 GB/s), not DRAM. Set
+    // SP_BEAST_PRESTAGE_FP32=1 to re-enable for experiments.
+    if (getenv("SP_BEAST_PRESTAGE_FP32") &&
+        getenv("SP_BEAST_PRESTAGE_FP32")[0] == '1')
+    {
+        uint64_t prestage_start = sp_time_us();
+        size_t   n_prestaged = 0;
+        size_t   bytes_prestaged = 0;
+        const size_t cap_bytes = (size_t)8 * 1024 * 1024 * 1024;  // 8 GB cap
+        for (uint32_t i = 0; i < engine->reservoir.tensor_count; i++) {
+            sp_optane_tensor_t *t = &engine->reservoir.tensors[i];
+            if (!t->ptr) continue;
+            // Skip routed expert banks — too big to fp32 pre-stage.
+            if (strstr(t->name, "ffn_gate_exps") ||
+                strstr(t->name, "ffn_up_exps")   ||
+                strstr(t->name, "ffn_down_exps")) {
+                continue;
+            }
+            // Skip already-fp32 tensors (norms, biases) — beast_matvec
+            // already memcpys those.
+            if (t->type == SP_GGML_TYPE_F32) continue;
+            // Compute element count from shape (handles 1D/2D/3D).
+            size_t n_floats = 1;
+            for (uint32_t d = 0; d < t->n_dims; d++) {
+                n_floats *= (size_t)t->ne[d];
+            }
+            if (n_floats == 0) continue;
+            const size_t fp32_bytes = n_floats * sizeof(float);
+            if (bytes_prestaged + fp32_bytes > cap_bytes) {
+                // Hit budget cap; stop pre-staging.
+                break;
+            }
+            float *buf = (float *)malloc(fp32_bytes);
+            if (!buf) break;
+            // Dequant the full tensor row-by-row using the existing
+            // beast_dequant_row dispatcher (which now has AVX-512 paths
+            // for Q4_K and Q6_K).
+            const size_t rb = beast_row_bytes(t->type, (int)t->ne[0]);
+            const uint64_t n_rows = (n_floats / (size_t)t->ne[0]);
+            const uint8_t *src = (const uint8_t *)t->ptr;
+            for (uint64_t r = 0; r < n_rows; r++) {
+                beast_dequant_row(src + (size_t)r * rb,
+                                   buf + r * (size_t)t->ne[0],
+                                   t->type, (int)t->ne[0]);
+            }
+            t->fp32_stage        = buf;
+            t->fp32_stage_floats = n_floats;
+            ++n_prestaged;
+            bytes_prestaged += fp32_bytes;
+        }
+        const double ms = (double)(sp_time_us() - prestage_start) / 1000.0;
+        fprintf(stderr,
+            "[sp-optane] Pre-staged %zu non-expert tensors as fp32 "
+            "(%.2f GiB) in %.1f ms\n",
+            n_prestaged,
+            (double)bytes_prestaged / (1024.0 * 1024.0 * 1024.0),
+            ms);
     }
 
     // ── Stage 2: Initialize the Shredder ────────────────────────────
@@ -425,6 +496,24 @@ void sp_beast_free(sp_beast_engine_t *engine) {
 
     sp_hetero_barrier_free(&engine->barrier);
     sp_shredder_free(&engine->shredder);
+    // Free pre-staged fp32 tensor buffers before releasing the reservoir.
+    {
+        size_t freed = 0;
+        for (uint32_t i = 0; i < engine->reservoir.tensor_count; i++) {
+            sp_optane_tensor_t *t = &engine->reservoir.tensors[i];
+            if (t->fp32_stage) {
+                free(t->fp32_stage);
+                t->fp32_stage = NULL;
+                t->fp32_stage_floats = 0;
+                ++freed;
+            }
+        }
+        if (freed > 0) {
+            fprintf(stderr,
+                "[sp-optane] Freed %zu pre-staged fp32 tensor buffers\n",
+                freed);
+        }
+    }
     sp_optane_free(&engine->reservoir);
 
     fprintf(stderr, "[sp-beast] Engine shutdown complete.\n");
@@ -505,13 +594,9 @@ static void beast_silu_mul(float *gate, const float *up, int n);
 // it up — both reference the same type).
 // ============================================================================
 
-// Forward decls — beast_row_bytes / beast_dequant_row are defined further
-// down with the rest of the dequant kernels. Without these the implicit
-// declarations created by the first call site below conflict with the
-// later `static size_t / static void` definitions ("redefinition; different
-// basic types" under MSVC's stricter C front-end).
-static size_t beast_row_bytes(uint32_t type, int ne0);
-static void   beast_dequant_row(const void *src, float *dst, uint32_t type, int n);
+// (beast_row_bytes / beast_dequant_row forward-declared near the top of
+// the TU so the fp32 pre-stage in sp_beast_init can call them. Just the
+// matvec helpers need forward decls here.)
 static void   beast_matvec(const sp_optane_tensor_t *W,
                             const float *x, float *out, float *scratch,
                             int n_out, int n_in);
@@ -1533,9 +1618,42 @@ static void beast_rms_norm(const float *x, const float *scale,
 // per matvec call, and at 960 matvecs/token that was ~29 ms of pure
 // overhead — almost half the per-token budget at 3.3 tok/s. Coarsening
 // parallelism to one thread per expert kills that overhead.
+//
+// Fast path: if the weight has been pre-staged as fp32 (W->fp32_stage)
+// during boot, skip per-row dequant entirely — just dot product against
+// the contiguous fp32 buffer. Used by the hot non-expert tensors
+// (attn Q/K/V/O, RMS norms, router, shared expert).
 static void beast_matvec_serial(const sp_optane_tensor_t *W,
                                   const float *x, float *out,
                                   int n_out, int n_in) {
+    // fp32_stage was deactivated: see commit message. fp32 weights are 7x
+    // bigger than Q4_K, and we're memory-bandwidth bound, so reading the
+    // fp32 buffer was SLOWER than reading Q4_K + dequant. Kept the loader
+    // in place but the matvec ignores it (the buffer is freed at shutdown).
+    if (0 && W->fp32_stage) {
+        // Pre-staged fp32 path. No dequant. Pure dot product.
+        const float *fp = W->fp32_stage;
+        for (int i = 0; i < n_out; i++) {
+            const float *row = fp + (size_t)i * (size_t)n_in;
+#if defined(__AVX512F__) || defined(_MSC_VER)
+            __m512 acc = _mm512_setzero_ps();
+            int j = 0;
+            for (; j + 16 <= n_in; j += 16) {
+                __m512 a = _mm512_loadu_ps(row + j);
+                __m512 b = _mm512_loadu_ps(x   + j);
+                acc = _mm512_fmadd_ps(a, b, acc);
+            }
+            float sum = _mm512_reduce_add_ps(acc);
+            for (; j < n_in; ++j) sum += row[j] * x[j];
+            out[i] = sum;
+#else
+            float sum = 0.0f;
+            for (int j = 0; j < n_in; j++) sum += row[j] * x[j];
+            out[i] = sum;
+#endif
+        }
+        return;
+    }
     const uint8_t *w_data = (const uint8_t *)W->ptr;
     const size_t rb = beast_row_bytes(W->type, n_in);
     float *t_scratch = (float *)SP_ALLOCA((size_t)n_in * sizeof(float));
@@ -1563,7 +1681,36 @@ static void beast_matvec_serial(const sp_optane_tensor_t *W,
 static void beast_matvec(const sp_optane_tensor_t *W,
                          const float *x, float *out, float *scratch,
                          int n_out, int n_in) {
-    (void)scratch;  // per-thread scratch is allocated below
+    (void)scratch;
+    if (0 && W->fp32_stage) {
+        // (Deactivated; see beast_matvec_serial above for the reason.)
+        const float *fp = W->fp32_stage;
+        // NOTE: Removed OMP from this fast path. With OMP enabled it hung
+        // on the first SSM matvec — likely a thread-bind / nested-region
+        // interaction with the heartbeat thread. Sequential is fine for
+        // the mostly-medium tensors this path handles (n_out ≤ ~8K).
+        int i;
+        for (i = 0; i < n_out; ++i) {
+            const float *row = fp + (size_t)i * (size_t)n_in;
+#if defined(__AVX512F__) || defined(_MSC_VER)
+            __m512 acc = _mm512_setzero_ps();
+            int j = 0;
+            for (; j + 16 <= n_in; j += 16) {
+                __m512 a = _mm512_loadu_ps(row + j);
+                __m512 b = _mm512_loadu_ps(x   + j);
+                acc = _mm512_fmadd_ps(a, b, acc);
+            }
+            float sum = _mm512_reduce_add_ps(acc);
+            for (; j < n_in; ++j) sum += row[j] * x[j];
+            out[i] = sum;
+#else
+            float sum = 0.0f;
+            for (int j = 0; j < n_in; ++j) sum += row[j] * x[j];
+            out[i] = sum;
+#endif
+        }
+        return;
+    }
     const uint8_t *w_data = (const uint8_t *)W->ptr;
     size_t rb = beast_row_bytes(W->type, n_in);
 

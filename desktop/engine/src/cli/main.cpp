@@ -1265,6 +1265,16 @@ int main(int argc, char** argv) {
             sp_beast_config_t bcfg; sp_beast_config_init(&bcfg);
             bcfg.gguf_path      = cc.beast_gguf_path.c_str();
             bcfg.force_cpu_only = false;
+            // Honour --n-experts-used N at the Beast level. The Beast router
+            // uses its own n_experts_per_token counter (separate from
+            // ForwardContext's). Default GGUF for Qwen3.6-A3B is 8; halving
+            // to 4 cuts MoE FFN compute by 2x with mild quality cost.
+            if (cc.n_experts_used > 0) {
+                bcfg.n_experts_per_token = cc.n_experts_used;
+                std::fprintf(stderr,
+                    "[sp-engine] Beast top-K override: %d experts/token\n",
+                    cc.n_experts_used);
+            }
             const int rc = sp_beast_init(&beast_engine, &bcfg);
             if (rc == 0) {
                 beast_active = true;

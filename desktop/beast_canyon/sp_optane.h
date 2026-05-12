@@ -89,6 +89,15 @@ typedef struct {
     uint64_t    offset;            // Byte offset from data section start
     uint64_t    n_bytes;           // Total size in bytes
     void       *ptr;               // DIRECT pointer into mmap region
+
+    // Optional pre-staged fp32 buffer. Set during load for "always-hot"
+    // tensors (attn Q/K/V/O, RMS norms, router gates, shared expert FFN,
+    // tok_embd, output) so beast_matvec can skip per-row dequant on every
+    // token. NULL for routed expert banks (too big to fully pre-stage at
+    // 21 GB Q4_K → ~75 GB fp32). When non-NULL, beast_matvec/serial uses
+    // this directly via the F32 type fast path.
+    float      *fp32_stage;
+    size_t      fp32_stage_floats;
 } sp_optane_tensor_t;
 
 // ============================================================================
