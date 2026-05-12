@@ -143,6 +143,19 @@ int sp_beast_gpu_delta_net(sp_beast_gpu_ctx_t *ctx,
                             int n_v_heads, int n_k_heads,
                             int head_k_dim, int head_v_dim);
 
+// ── CUDA Graphs: record once, replay many ──
+//
+// The per-layer SSM kernel sequence is fixed once weights are staged;
+// capturing it as a graph and launching the captured graph each token
+// costs ~5-10 us total instead of paying per-kernel WDDM launch overhead
+// (~100-500 us per kernel observed on RTX 2060 + Windows). Buffer
+// addresses inside the captured graph are persistent device pointers,
+// so updated contents flow through naturally on every replay.
+int sp_beast_gpu_capture_begin(sp_beast_gpu_ctx_t *ctx);
+int sp_beast_gpu_capture_end(sp_beast_gpu_ctx_t *ctx, void **graph_out);
+int sp_beast_gpu_graph_instantiate(void *graph, void **exec_out);
+int sp_beast_gpu_graph_launch_and_sync(sp_beast_gpu_ctx_t *ctx, void *exec);
+
 #endif // SP_WITH_CUDA
 
 #ifdef __cplusplus

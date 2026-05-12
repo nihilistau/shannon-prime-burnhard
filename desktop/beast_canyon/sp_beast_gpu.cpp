@@ -331,6 +331,49 @@ int sp_beast_gpu_add(sp_beast_gpu_ctx_t *ctx,
             == cudaSuccess) ? 0 : -1;
 }
 
+// ── CUDA Graph capture / replay wrappers ──
+//
+// Wraps cudaStream{Begin,End}Capture + cudaGraphInstantiate + cudaGraphLaunch
+// so the layer dispatch can record a fixed kernel sequence once and replay
+// it per token without paying the per-kernel WDDM launch cost again.
+int sp_beast_gpu_capture_begin(sp_beast_gpu_ctx_t *ctx) {
+    if (!ctx) return -1;
+    return (cudaStreamBeginCapture(ctx->stream, cudaStreamCaptureModeGlobal)
+            == cudaSuccess) ? 0 : -1;
+}
+
+int sp_beast_gpu_capture_end(sp_beast_gpu_ctx_t *ctx, void **graph_out) {
+    if (!ctx || !graph_out) return -1;
+    cudaGraph_t g = NULL;
+    if (cudaStreamEndCapture(ctx->stream, &g) != cudaSuccess) {
+        SP_GPU_LOG("cudaStreamEndCapture failed");
+        return -1;
+    }
+    *graph_out = g;
+    return 0;
+}
+
+int sp_beast_gpu_graph_instantiate(void *graph, void **exec_out) {
+    if (!graph || !exec_out) return -1;
+    cudaGraphExec_t exec = NULL;
+    if (cudaGraphInstantiate(&exec, (cudaGraph_t)graph, NULL, NULL, 0)
+        != cudaSuccess) {
+        SP_GPU_LOG("cudaGraphInstantiate failed");
+        return -1;
+    }
+    *exec_out = exec;
+    return 0;
+}
+
+int sp_beast_gpu_graph_launch_and_sync(sp_beast_gpu_ctx_t *ctx, void *exec) {
+    if (!ctx || !exec) return -1;
+    if (cudaGraphLaunch((cudaGraphExec_t)exec, ctx->stream) != cudaSuccess) {
+        SP_GPU_LOG("cudaGraphLaunch failed");
+        return -1;
+    }
+    return cudaStreamSynchronize(ctx->stream) == cudaSuccess ? 0 : -1;
+}
+
 float *sp_beast_gpu_stage_fp32_raw(sp_beast_gpu_ctx_t *ctx,
                                      const float *host, int n) {
     if (!ctx || !host || n <= 0) return NULL;

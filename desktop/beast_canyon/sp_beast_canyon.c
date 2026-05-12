@@ -2860,6 +2860,22 @@ static void beast_ssm_layer(sp_beast_engine_t *engine, float *x,
 }
 
 #ifdef SP_WITH_CUDA
+// Per-layer captured CUDA graphs for the SSM block. First invocation of
+// each layer records the kernel sequence into a graph via stream capture;
+// subsequent invocations launch the cached graph with one ~10us call
+// instead of submitting each kernel individually (which on Windows WDDM
+// pays a hidden 100-500us per launch). The state and conv-state buffers
+// referenced by the graph are persistent device pointers — they carry
+// updated contents across replays without needing graph re-capture.
+#define SP_BEAST_MAX_SSM_LAYERS 64
+typedef struct {
+    void *graph;        // cudaGraph_t  (opaque, void* to avoid CUDA in C TUs)
+    void *exec;         // cudaGraphExec_t
+    int   ready;
+} sp_ssm_graph_t;
+static sp_ssm_graph_t g_ssm_graphs[SP_BEAST_MAX_SSM_LAYERS] = {0};
+// Capture wrappers are declared in sp_beast_gpu.h (extern "C" linkage).
+
 // ── Full SSM block on GPU — one cudaStreamSynchronize per LAYER ──
 //
 // Mirrors beast_ssm_layer above but every step runs as a CUDA kernel on
@@ -2949,6 +2965,33 @@ static int beast_ssm_layer_gpu(sp_beast_engine_t *engine, float *x,
         !d_S || !d_cs) return 0;
 
     int rc = 0;
+    // FAST PATH: replay captured graph if available.
+    const int use_graphs =
+        (getenv("SP_BEAST_GPU_USE_GRAPHS") &&
+         getenv("SP_BEAST_GPU_USE_GRAPHS")[0] == '1') ? 1 : 0;
+    if (use_graphs && l < SP_BEAST_MAX_SSM_LAYERS && g_ssm_graphs[l].ready) {
+        // Copy current x into the persistent pinned/host buffer area
+        // (here we go straight host->device async; the captured graph
+        // includes the H2D from d_x's source pointer-style memcpy of the
+        // SAME host pointer, so a memcpy of `x` into the same backing
+        // location prior to launch is what carries token-to-token data.)
+        rc |= sp_beast_gpu_upload(g_beast_gpu, d_x, x, n_embd);
+        rc |= sp_beast_gpu_graph_launch_and_sync(g_beast_gpu,
+                                                   g_ssm_graphs[l].exec);
+        rc |= sp_beast_gpu_download(g_beast_gpu, x, d_x, n_embd);
+        // (Sync inside graph_launch_and_sync; one more sync needed for
+        // the trailing D2H above.)
+        rc |= sp_beast_gpu_sync(g_beast_gpu);
+        return rc == 0;
+    }
+    // CAPTURE PATH (first call for this layer) or NON-GRAPH PATH.
+    int capturing = 0;
+    if (use_graphs && l < SP_BEAST_MAX_SSM_LAYERS && !g_ssm_graphs[l].ready) {
+        if (sp_beast_gpu_capture_begin(g_beast_gpu) == 0) {
+            capturing = 1;
+        }
+    }
+
     rc |= sp_beast_gpu_upload(g_beast_gpu, d_x, x, n_embd);
 
     // 1. RMS attn norm: xn = rmsnorm(x, attn_norm.w)
@@ -3013,8 +3056,21 @@ static int beast_ssm_layer_gpu(sp_beast_engine_t *engine, float *x,
     rc |= sp_beast_gpu_add(g_beast_gpu, d_x, d_attn_out, n_embd);
 
     rc |= sp_beast_gpu_download(g_beast_gpu, x, d_x, n_embd);
-    rc |= sp_beast_gpu_sync(g_beast_gpu);
 
+    if (capturing) {
+        // End the capture, instantiate, and run it for this first call.
+        void *graph = NULL, *exec = NULL;
+        if (sp_beast_gpu_capture_end(g_beast_gpu, &graph) == 0 &&
+            sp_beast_gpu_graph_instantiate(graph, &exec) == 0)
+        {
+            g_ssm_graphs[l].graph = graph;
+            g_ssm_graphs[l].exec  = exec;
+            g_ssm_graphs[l].ready = 1;
+            rc |= sp_beast_gpu_graph_launch_and_sync(g_beast_gpu, exec);
+        }
+    } else {
+        rc |= sp_beast_gpu_sync(g_beast_gpu);
+    }
     return rc == 0;
 }
 #endif
