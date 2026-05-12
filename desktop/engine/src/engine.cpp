@@ -11,6 +11,8 @@
 #include "gguf_loader.h"
 #include "kv_cache.h"
 #include "llama_weights.h"
+#include "sp_flash_oracle.h"
+#include "sp_flash_oracle_native.h"
 #include "tokenizer.h"
 #include "vocab.h"
 
@@ -80,7 +82,14 @@ struct Engine::Impl {
     std::unique_ptr<ForwardNativeContext> fnc;
     bool                                  native_active = false;
 
+    // SP-Flash: block diffusion speculative decoding oracle (Phase 1+2+3).
+    std::unique_ptr<SpFlashOracle>        sp_flash_oracle;
+    std::unique_ptr<SpFlashOracleNative>  sp_flash_native_oracle;
+    SpFlashCaptureCtx                     sp_flash_cap;
+
     ~Impl() {
+        sp_flash_native_oracle.reset();  // reset before weights
+        sp_flash_oracle.reset();         // reset before weights (oracle holds weight tensor ptrs)
         fnc.reset();
         fc.reset();
         weights.reset();
@@ -205,6 +214,53 @@ int Engine::load(const Config& cfg) {
             pe, impl_->backend);
     }
     if (!impl_->fc) return 6;
+
+    // ── SP-Flash speculative decoding oracle ────────────────────────
+    if (cfg.sp_flash && !cfg.sp_flash_draft.empty()) {
+        SpFlashOracle::Config oc;
+        oc.draft_path      = cfg.sp_flash_draft;
+        oc.block_size      = cfg.sp_flash_block;
+        oc.adaptive        = cfg.sp_flash_adaptive;
+        oc.target_tok_embd = impl_->weights->tok_embd;
+        oc.target_output   = impl_->weights->output;
+        impl_->sp_flash_oracle = SpFlashOracle::load(oc);
+        if (impl_->sp_flash_oracle) {
+            impl_->sp_flash_cap.target_layer_ids =
+                impl_->sp_flash_oracle->target_layer_ids();
+            impl_->sp_flash_cap.active = false;
+            impl_->sp_flash_oracle->bind_capture(&impl_->sp_flash_cap);
+            impl_->fc->bind_sp_flash_capture(&impl_->sp_flash_cap);
+            std::fprintf(stderr,
+                "[sp-engine] SP-Flash: oracle loaded (block=%d adaptive=%s)\n",
+                cfg.sp_flash_block, cfg.sp_flash_adaptive ? "on" : "off");
+        } else {
+            std::fprintf(stderr, "[sp-engine] SP-Flash: oracle load failed\n");
+        }
+    }
+
+    // ── SP-Flash Phase 3: native oracle (Vilenkin + Möbius, no GGUF draft) ──
+    if (cfg.sp_flash_native && !cfg.sp_flash_calibration.empty()) {
+        SpFlashOracleNative::Config oc;
+        oc.calibration_dir = cfg.sp_flash_calibration;
+        oc.block_size      = cfg.sp_flash_block;
+        oc.adaptive        = cfg.sp_flash_adaptive;
+        oc.mask_tok_id     = 0;
+        oc.target_tok_embd = impl_->weights->tok_embd;
+        oc.target_output   = impl_->weights->output;
+        impl_->sp_flash_native_oracle = SpFlashOracleNative::load(oc);
+        if (impl_->sp_flash_native_oracle) {
+            impl_->sp_flash_cap.target_layer_ids =
+                impl_->sp_flash_native_oracle->target_layer_ids();
+            impl_->sp_flash_cap.active = false;
+            impl_->sp_flash_native_oracle->bind_capture(&impl_->sp_flash_cap);
+            impl_->fc->bind_sp_flash_capture(&impl_->sp_flash_cap);
+            std::fprintf(stderr,
+                "[sp-engine] SP-Flash Native: oracle loaded (block=%d adaptive=%s)\n",
+                cfg.sp_flash_block, cfg.sp_flash_adaptive ? "on" : "off");
+        } else {
+            std::fprintf(stderr, "[sp-engine] SP-Flash Native: oracle load failed\n");
+        }
+    }
 
     // ── CRT multi-GPU tensor splitting (Beast Canyon) ──────────────
     if (cfg.crt_split) {
@@ -478,57 +534,143 @@ int Engine::generate(const std::string& prompt, int n_predict,
     int32_t tok_id = argmax(last_logits.data(), n_vocab_out);
     const auto t_decode_start = std::chrono::steady_clock::now();
     int decoded_count = 0;
-    for (int i = 0; i < n_predict; ++i) {
-        generated.push_back(tok_id);
-        if (eos >= 0 && tok_id == eos) break;
+    const bool use_sp_flash = ((bool)impl_->sp_flash_oracle ||
+                               (bool)impl_->sp_flash_native_oracle) && !use_native;
 
-        // System 1↔2: compute entropy of current logits to decide which
-        // cache stores the NEXT token's K/V. The intuition: if the model
-        // is uncertain now, the next token's context is "hard" and
-        // deserves maximum-fidelity compression.
-        if (dual) {
-            const float H = logit_entropy(last_logits.data(), n_vocab_out);
-            const int pos = (int)ids.size() + i;  // sequence position of next token
-            const int routed = dual->route_position(pos, H);
-            sys2_routed += routed;
-            // Bind the routed cache for this decode step. The decode()
-            // function reads past K/V and writes new K/V to the bound
-            // cache. We need the NEW K/V to go to the routed cache, but
-            // past K/V must come from the merged view.
-            //
-            // For now, bind System 1 always (it holds prefill + most
-            // positions). The write-back in the decode loop inside
-            // forward.cpp writes to whatever cache is bound. We'll
-            // intercept at write time via the DualKvCache.
-            //
-            // Actually, the right approach: we can't easily reroute the
-            // internal write inside decode(). Instead, we always decode
-            // through System 1 (bound), and then copy the new K/V to
-            // System 2 when routed. This is simpler and correct.
-            //
-            // TODO: For the host-cache path, we could override the bound
-            // cache per step. For now, System 1 handles all decode graph
-            // computation; the routing only affects which cache provides
-            // the ground-truth reconstruction on read.
-        }
+    if (use_sp_flash) {
+        // SP-Flash speculative decoding loop.
+        // Each iteration: anchor-decode cur_tok (captures hidden states),
+        // then oracle drafts a block and target verifies. Multiple output
+        // tokens per anchor decode call.
+        // NOTE: target_logits_fn decodes draft tokens sequentially —
+        // stale K/V at rejected positions is acceptable for Phase 1 since
+        // set_kv_pos trims the cache and future decode overwrites them.
+        int32_t cur_tok = tok_id;
+        while ((int)generated.size() < n_predict) {
+            generated.push_back(cur_tok);
+            if (eos >= 0 && cur_tok == eos) break;
+            if ((int)generated.size() >= n_predict) break;
 
-        std::vector<float> step_logits;
-        int step_nv = 0;
-        bool ok;
-        if (use_native) {
-            ok = impl_->fnc->decode(tok_id, step_logits, step_nv);
-        } else {
-            ok = impl_->fc->decode(tok_id, step_logits, step_nv);
+            // Anchor decode: write cur_tok's K/V and capture hidden states
+            impl_->sp_flash_cap.active = true;
+            std::vector<float> anchor_logits;
+            int anchor_nv = 0;
+            if (!impl_->fc->decode(cur_tok, anchor_logits, anchor_nv)) {
+                std::fprintf(stderr, "[sp-engine] SP-Flash: anchor decode failed\n");
+                break;
+            }
+            impl_->sp_flash_cap.active = false;
+            ++decoded_count;
+            n_vocab_out = anchor_nv;
+
+            const int saved_kv = impl_->fc->kv_pos();
+
+            auto target_logits_fn = [&](const std::vector<int32_t>& draft_toks)
+                -> std::vector<float>
+            {
+                std::vector<float> all_logits;
+                all_logits.reserve(draft_toks.size() * (size_t)anchor_nv);
+                for (auto dt : draft_toks) {
+                    std::vector<float> dl;
+                    int dnv = 0;
+                    if (!impl_->fc->decode(dt, dl, dnv)) break;
+                    all_logits.insert(all_logits.end(), dl.begin(), dl.end());
+                }
+                return all_logits;
+            };
+
+            auto accepted = impl_->sp_flash_native_oracle
+                ? impl_->sp_flash_native_oracle->step(target_logits_fn, cur_tok)
+                : impl_->sp_flash_oracle->step(target_logits_fn, cur_tok);
+
+            // Trim KV cache: stale K/V at positions beyond accepted prefix
+            // will be overwritten by future decode calls.
+            impl_->fc->set_kv_pos(saved_kv + (int)accepted.size());
+
+            if (accepted.empty()) {
+                // Oracle failed — fall back to greedy from anchor logits
+                cur_tok = argmax(anchor_logits.data(), anchor_nv);
+                continue;
+            }
+
+            // Emit accepted[0..N-2] to generated immediately.
+            // accepted[N-1] becomes cur_tok for the next iteration's push.
+            bool eos_hit = false;
+            for (int k = 0; k + 1 < (int)accepted.size(); ++k) {
+                generated.push_back(accepted[k]);
+                if (eos >= 0 && accepted[k] == eos) { eos_hit = true; break; }
+                if ((int)generated.size() >= n_predict) { eos_hit = true; break; }
+            }
+            if (eos_hit) break;
+            cur_tok = accepted.back();
         }
-        if (!ok) {
+        // Effective tok/sec for SP-Flash = total tokens produced / wall time.
+        // decoded_count only tracked anchor decodes; override with actual count.
+        decoded_count = (int)generated.size();
+        if (impl_->sp_flash_native_oracle) {
             std::fprintf(stderr,
-                "[sp-engine] Engine::generate: decode failed at step %d\n", i);
-            break;
+                "[sp-engine] SP-Flash Native: accept_rate=%.3f block_size=%d\n",
+                impl_->sp_flash_native_oracle->acceptance_rate(),
+                impl_->sp_flash_native_oracle->current_block_size());
+        } else {
+            std::fprintf(stderr,
+                "[sp-engine] SP-Flash: accept_rate=%.3f block_size=%d\n",
+                impl_->sp_flash_oracle->acceptance_rate(),
+                impl_->sp_flash_oracle->current_block_size());
         }
-        last_logits = std::move(step_logits);
-        n_vocab_out = step_nv;
-        tok_id = argmax(last_logits.data(), step_nv);
-        ++decoded_count;
+    } else {
+        for (int i = 0; i < n_predict; ++i) {
+            generated.push_back(tok_id);
+            if (eos >= 0 && tok_id == eos) break;
+
+            // System 1↔2: compute entropy of current logits to decide which
+            // cache stores the NEXT token's K/V. The intuition: if the model
+            // is uncertain now, the next token's context is "hard" and
+            // deserves maximum-fidelity compression.
+            if (dual) {
+                const float H = logit_entropy(last_logits.data(), n_vocab_out);
+                const int pos = (int)ids.size() + i;  // sequence position of next token
+                const int routed = dual->route_position(pos, H);
+                sys2_routed += routed;
+                // Bind the routed cache for this decode step. The decode()
+                // function reads past K/V and writes new K/V to the bound
+                // cache. We need the NEW K/V to go to the routed cache, but
+                // past K/V must come from the merged view.
+                //
+                // For now, bind System 1 always (it holds prefill + most
+                // positions). The write-back in the decode loop inside
+                // forward.cpp writes to whatever cache is bound. We'll
+                // intercept at write time via the DualKvCache.
+                //
+                // Actually, the right approach: we can't easily reroute the
+                // internal write inside decode(). Instead, we always decode
+                // through System 1 (bound), and then copy the new K/V to
+                // System 2 when routed. This is simpler and correct.
+                //
+                // TODO: For the host-cache path, we could override the bound
+                // cache per step. For now, System 1 handles all decode graph
+                // computation; the routing only affects which cache provides
+                // the ground-truth reconstruction on read.
+            }
+
+            std::vector<float> step_logits;
+            int step_nv = 0;
+            bool ok;
+            if (use_native) {
+                ok = impl_->fnc->decode(tok_id, step_logits, step_nv);
+            } else {
+                ok = impl_->fc->decode(tok_id, step_logits, step_nv);
+            }
+            if (!ok) {
+                std::fprintf(stderr,
+                    "[sp-engine] Engine::generate: decode failed at step %d\n", i);
+                break;
+            }
+            last_logits = std::move(step_logits);
+            n_vocab_out = step_nv;
+            tok_id = argmax(last_logits.data(), step_nv);
+            ++decoded_count;
+        }
     }
     const auto t_decode_end = std::chrono::steady_clock::now();
     const double t_decode_ms = std::chrono::duration<double, std::milli>(

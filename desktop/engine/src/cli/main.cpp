@@ -293,6 +293,14 @@ static void usage(const char* prog) {
         "  --s12-threshold <f>   entropy threshold in nats (default: 2.0)\n"
         "  --s12-sys2 <type>     System 2 cache type: hier (default) | sqfree\n"
         "                        (env: SP_ENGINE_SYSTEM12, SP_ENGINE_S12_THRESHOLD)\n"
+        "\n"
+        "SP-Flash speculative decoding (DFlash-style block diffusion):\n"
+        "  --sp-flash            enable SP-Flash (requires --sp-flash-draft)\n"
+        "  --sp-flash-draft <g>  path to dflash-draft-3.6 GGUF\n"
+        "  --sp-flash-block <n>  draft block size (default: 8)\n"
+        "  --sp-flash-adaptive   enable adaptive block size (EMA-gated, 4/8/16)\n"
+        "  --sp-flash-native     enable Phase 3 SP-native oracle (no GGUF draft)\n"
+        "  --sp-flash-calibration <d>  calibration dir (layer_N.bin + meta.json)\n"
         "\n", prog);
 }
 
@@ -409,6 +417,12 @@ static int parse_config_flag(sp::engine::Config& cfg, const char* a, const char*
     if (a_eq("--beast") && has_next)              { cfg.beast_gguf_path = next; return 2; }
     if (a_eq("--draft") && has_next)              { cfg.draft_gguf_path = next; return 2; }
     if (a_eq("--draft-k") && has_next)            { cfg.draft_k = std::max(1, std::atoi(next)); return 2; }
+    if (a_eq("--sp-flash"))                        { cfg.sp_flash = true; return 1; }
+    if (a_eq("--sp-flash-draft") && has_next)      { cfg.sp_flash_draft = next; cfg.sp_flash = true; return 2; }
+    if (a_eq("--sp-flash-block") && has_next)      { cfg.sp_flash_block = std::max(1, std::atoi(next)); return 2; }
+    if (a_eq("--sp-flash-adaptive"))               { cfg.sp_flash_adaptive = true; return 1; }
+    if (a_eq("--sp-flash-native"))                 { cfg.sp_flash_native = true; return 1; }
+    if (a_eq("--sp-flash-calibration") && has_next){ cfg.sp_flash_calibration = next; cfg.sp_flash_native = true; return 2; }
     if (a_eq("--s12-threshold") && has_next) { cfg.s12_threshold = (float)std::atof(next); return 2; }
     if (a_eq("--s12-sys2")      && has_next) { cfg.s12_sys2 = next; return 2; }
 

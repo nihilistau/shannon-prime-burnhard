@@ -197,6 +197,18 @@ struct Config {
     float       s12_threshold     = 2.0f;  // entropy threshold (nats)
     // System 2 cache type: "hier" (default) or "sqfree"
     std::string s12_sys2          = "hier";
+
+    // SP-Flash speculative decoding (DFlash-style block diffusion).
+    // When enabled, uses dflash-draft-3.6 to draft `sp_flash_block` tokens
+    // per step; target model verifies in bulk via exact-match (Phase 1) or
+    // K-corr spectral acceptance (Phase 2+).
+    bool        sp_flash          = false;
+    std::string sp_flash_draft    = "";   // path to dflash-draft GGUF
+    int         sp_flash_block    = 8;    // draft block size (default 8)
+    bool        sp_flash_adaptive = false;
+    // Phase 3: SP-native oracle (no GGUF draft model — calibration bins only).
+    bool        sp_flash_native      = false;
+    std::string sp_flash_calibration = "";  // dir with layer_N.bin + meta.json
 };
 
 // Seed Config fields from environment variables. Called by each CLI verb

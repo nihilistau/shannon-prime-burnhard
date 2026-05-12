@@ -14,6 +14,8 @@
 #include "dflash_weights.h"
 #include "forward.h"  // SpFlashCaptureCtx
 
+#include "shannon_prime.h"  // sp_kcorr_accept, sp_kcorr_floor
+
 #include "ggml-alloc.h"
 #include "ggml-backend.h"
 #include "ggml-cpu.h"
@@ -66,10 +68,48 @@ static std::vector<int32_t> accept_exact(
             return result;
         }
     }
-    // All draft tokens matched — append the target's next token after the block.
-    // The last target logits row (index block-1) already yielded the matching
-    // token; we need nothing further here per the spec (length = block_size when
-    // all match, caller handles the next prefill). Return as-is.
+    // All draft tokens matched. Return block_size accepted tokens; caller
+    // handles the continuation.
+    return result;
+}
+
+// Phase 2: K-corr + exact-match acceptance.
+// First tries exact-match; on mismatch, falls back to K-corr spectral check
+// using the draft model's output hidden states vs the anchor context vector.
+// draft_hidden[i] = draft model's hidden state at position i [hidden_size floats]
+// ctx_vec         = FC-projected anchor context [hidden_size floats]
+static std::vector<int32_t> accept_kcorr(
+    const std::vector<int32_t>& draft,
+    const std::vector<float>&   target_logits,   // [block_size * n_vocab]
+    int                         n_vocab,
+    const std::vector<float>&   draft_hidden,    // [block_size * hidden_size]
+    const std::vector<float>&   ctx_vec_data,    // [hidden_size] anchor context
+    int                         hidden_size,
+    float                       kcorr_floor,
+    float*                      scratch)         // [2 * hidden_size]
+{
+    std::vector<int32_t> result;
+    result.reserve(draft.size() + 1);
+    const int block = (int)draft.size();
+    for (int i = 0; i < block; ++i) {
+        const int32_t target_tok =
+            argmax_f32(target_logits.data() + (size_t)i * n_vocab, n_vocab);
+        if (draft[i] == target_tok) {
+            result.push_back(draft[i]);
+            continue;
+        }
+        // Exact-match failed — try K-corr spectral acceptance.
+        // Compare draft hidden state at position i against the anchor ctx_vec.
+        const float* dh = draft_hidden.data() + (size_t)i * hidden_size;
+        if (sp_kcorr_accept(dh, ctx_vec_data.data(), hidden_size,
+                            kcorr_floor, scratch)) {
+            // Spectrally close enough — accept draft token instead of target.
+            result.push_back(draft[i]);
+        } else {
+            result.push_back(target_tok);  // resampled from target at mismatch
+            return result;
+        }
+    }
     return result;
 }
 
@@ -113,6 +153,12 @@ struct SpFlashOracle::Impl {
     int   cur_block_size= 8;
     float ema_accept    = 0.0f;
     int   step_count    = 0;
+
+    // Phase 2: K-corr spectral acceptance
+    // Pre-computed floor for Qwen3.6-35B Q4 (params=35B, bits=4, budget=0.03).
+    // Scratch: 2*hidden_size floats for sp_kcorr(); allocated at load time.
+    float               kcorr_floor   = 0.95f;  // initialised in load()
+    std::vector<float>  kcorr_scratch;           // 2 * hidden_size floats
 
     ~Impl() {
         if (allocr)  ggml_gallocr_free(allocr);
@@ -186,6 +232,12 @@ std::unique_ptr<SpFlashOracle> SpFlashOracle::load(const Config& cfg) {
     // Scratch arena for graph ggml_contexts
     I->ctx_mem.resize(kCtxSize);
 
+    // Phase 2: K-corr floor and scratch buffer
+    // Default params: Qwen3.6-35B Q4_K_M — 35B params, 4-bit, PPL budget 3%
+    I->kcorr_floor   = sp_kcorr_floor(35.0f, 4, 0.03f);
+    I->kcorr_scratch.resize((size_t)I->hidden_size * 2);
+    std::fprintf(stderr, "[sp-oracle] K-corr floor = %.4f\n", I->kcorr_floor);
+
     std::fprintf(stderr,
         "[sp-oracle] loaded: hidden=%d heads=%d/%d head_dim=%d block=%d "
         "n_target_layers=%d mask_tok=%d\n",
@@ -222,8 +274,8 @@ std::vector<int32_t> SpFlashOracle::step(
     Impl* I = impl_.get();
     auto* W = I->weights.get();
 
-    if (!I->capture || !I->capture->active) {
-        std::fprintf(stderr, "[sp-oracle] step(): capture context not bound or not active\n");
+    if (!I->capture) {
+        std::fprintf(stderr, "[sp-oracle] step(): capture context not bound\n");
         return {};
     }
     SpFlashCaptureCtx* cap = I->capture;
@@ -412,6 +464,10 @@ std::vector<int32_t> SpFlashOracle::step(
     ggml_tensor* draft_x = ggml_view_2d(gctx, x, hidden, bs, row_bytes,
                                          /*offset=*/row_bytes);
 
+    // Mark draft_x as output so we can read back hidden states for K-corr.
+    ggml_set_name(draft_x, "draft_hidden");
+    ggml_set_output(draft_x);
+
     // Apply output_norm
     ggml_tensor* normed = ggml_mul(gctx, ggml_rms_norm(gctx, draft_x, rms_eps), W->output_norm);
 
@@ -489,7 +545,7 @@ std::vector<int32_t> SpFlashOracle::step(
     }
 
     // -----------------------------------------------------------------------
-    // 9. Read draft logits and greedy-sample draft tokens
+    // 9. Read draft logits + draft hidden states; greedy-sample draft tokens
     // -----------------------------------------------------------------------
     const int n_vocab = (int)I->target_output->ne[1];
     // Sanity: ne[1] must be vocab_size (>> hidden_size) — guards against a
@@ -498,6 +554,13 @@ std::vector<int32_t> SpFlashOracle::step(
     std::vector<float> draft_logits((size_t)bs * n_vocab);
     ggml_backend_tensor_get(logits, draft_logits.data(), 0,
                             draft_logits.size() * sizeof(float));
+
+    // Read draft hidden states [hidden, bs] for K-corr acceptance (Phase 2).
+    // draft_x is a view of x starting at row 1; ggml lays it out contiguously
+    // after gallocr allocation, so a single tensor_get reads all bs rows.
+    std::vector<float> draft_hidden_data((size_t)hidden * bs);
+    ggml_backend_tensor_get(draft_x, draft_hidden_data.data(), 0,
+                            draft_hidden_data.size() * sizeof(float));
 
     std::vector<int32_t> draft_tokens(bs);
     for (int i = 0; i < bs; ++i) {
@@ -517,7 +580,14 @@ std::vector<int32_t> SpFlashOracle::step(
         return {};
     }
 
-    std::vector<int32_t> accepted = accept_exact(draft_tokens, target_logits, n_vocab);
+    // Phase 2: K-corr acceptance — exact-match primary, K-corr spectral fallback.
+    // draft_hidden rows [0..bs-1] are compared against ctx_vec for spectral proximity.
+    // ggml draft_x is [hidden, bs] (ne[0]=hidden, ne[1]=bs, column-major),
+    // so row i = draft_hidden_data.data() + i * hidden.
+    std::vector<int32_t> accepted = accept_kcorr(
+        draft_tokens, target_logits, n_vocab,
+        draft_hidden_data, ctx_vec_data,
+        hidden, I->kcorr_floor, I->kcorr_scratch.data());
 
     // -----------------------------------------------------------------------
     // 11. Adaptive EMA tracking (Phase 1: no Ricci sentinel, just EMA update)

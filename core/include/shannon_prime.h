@@ -1159,6 +1159,35 @@ int sp_hier_cache_load_partial(sp_hier_cache_t *sc,
 // Utility: compute FNV-1a hash of a string (for model_hash).
 uint64_t sp_fnv1a_hash(const char *str, size_t len);
 
+// ============================================================================
+// K-corr Spectral Acceptance (Phase 2 SP-Flash)
+// ============================================================================
+//
+// K-corr measures agreement between two hidden-state vectors in the VHT2
+// spectral domain. Used as the acceptance criterion in SP-Flash Phase 2:
+// if a draft token's hidden state is spectrally close enough to the target's,
+// accept it even when the token IDs differ (semantically equivalent paths).
+//
+// sp_kcorr: normalised dot product of VHT2(a) and VHT2(b).
+//   Returns 1.0 when a == b, 0.0 when orthogonal, −1.0 when anti-correlated.
+//   `scratch` must point to at least 2*n floats of caller-allocated workspace.
+float sp_kcorr(const float *a, const float *b, int n, float *scratch);
+
+// Compute the K-corr acceptance floor for a given model+quantisation budget.
+//   params_b  — target model size in billions (e.g. 35.0 for Qwen3.6-35B).
+//   bits      — average quantisation bits (e.g. 4 for Q4_K_M).
+//   ppl_budget — max perplexity degradation we can tolerate (e.g. 0.03).
+// Returns the minimum K-corr score for which we accept a divergent draft token.
+// Formula: floor = 1 − sqrt(log(1+budget) × params^β × bits^γ / K)
+//   with K=4700, β=1.1, γ=1.5 (empirically fit to SP scaling data).
+float sp_kcorr_floor(float params_b, int bits, float ppl_budget);
+
+// Accept/reject a draft hidden state against the target's.
+//   Returns true (accept) when sp_kcorr(draft_h, target_h, n, scratch) >= floor.
+//   `scratch` must be at least 2*n floats.
+bool sp_kcorr_accept(const float *draft_h, const float *target_h, int n,
+                     float floor, float *scratch);
+
 #ifdef __cplusplus
 }
 #endif

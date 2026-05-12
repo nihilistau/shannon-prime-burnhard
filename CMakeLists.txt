@@ -61,6 +61,9 @@ set(SP_CORE_SRC
     core/src/shannon_prime_cauchy.c
     core/src/shannon_prime_modelpack.c
     core/src/shannon_prime_pe.c
+    core/src/shannon_prime_flash.c
+    core/src/shannon_prime_kcorr.c
+    core/src/shannon_prime_flash_native.c
     core/src/sp_runmode.c
     core/src/burnhard_config.c
     core/src/shredder_q4k_inflight.c
@@ -291,7 +294,10 @@ add_library(sp_engine STATIC
     desktop/engine/src/sp_threadpool.cpp
     desktop/engine/src/forward_native.cpp
     desktop/engine/src/forward_native_context.cpp
-    desktop/engine/src/speculative_oracle.cpp)
+    desktop/engine/src/speculative_oracle.cpp
+    desktop/engine/src/dflash_weights.cpp
+    desktop/engine/src/sp_flash_oracle.cpp
+    desktop/engine/src/sp_flash_oracle_native.cpp)
 
 # cpp-httplib (if present in vendor)
 if(EXISTS ${CMAKE_SOURCE_DIR}/vendor/cpp-httplib/httplib.cpp)
