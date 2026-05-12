@@ -1467,14 +1467,26 @@ int main(int argc, char** argv) {
         }
 
 #if defined(SP_ENGINE_WITH_BEAST)
-        // Beast Canyon short-circuit: when --beast is set, the entire chat
-        // forward (prefill + decode loop) runs through sp_beast_generate —
-        // Beast Canyon's own end-to-end inference engine. Bypasses ggml /
-        // ForwardContext entirely. The chat verb here is just I/O glue:
-        // tokenise prompt, hand to Beast, detokenise output, print.
-        // sp_beast_generate manages its own KV cache, sidecar speculative
-        // decode, Optane reservoir reads, and (eventually) dual-GPU dispatch.
-        if (beast_active && !draft_active) {
+        // Beast Canyon short-circuit (opt-in, default OFF).
+        //
+        // When --beast is set, the Beast engine is booted and the layer
+        // split policy (20 RTX layers + top-K=4 with 2/2 CPU expert split
+        // + CRT dispatch armed) is applied at sp_beast_init. That policy
+        // takes effect through Furnace's mul_mat_id interception in the
+        // standard ForwardContext + ggml-cuda path — which is the route
+        // that hits 25-30 tok/s on this hardware (per the shannon-prime-
+        // llama reference build, which patches LM Studio's llama.dll).
+        //
+        // The hand-rolled sp_beast_generate path below bypasses every
+        // production lever: ggml-cuda's async MoE MMQ kernels, the
+        // hierarchical KV cache, Furnace dispatch, CRT expert split,
+        // Shredder dequant. It's useful as a no-GPU reference and for
+        // debugging the Beast engine internals, but it's NOT the default
+        // chat path. Opt in with SP_BEAST_OWN_CHAT=1.
+        const char* env_own_chat = std::getenv("SP_BEAST_OWN_CHAT");
+        const bool beast_own_chat =
+            env_own_chat && env_own_chat[0] == '1';
+        if (beast_active && !draft_active && beast_own_chat) {
             std::printf("%s", text.c_str());
             std::fflush(stdout);
             // sp_beast_generate uses C int (4-byte) for token IDs — convert
