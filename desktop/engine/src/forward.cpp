@@ -230,6 +230,9 @@ struct ForwardContext::Impl {
     // pure-attention archs.
     class GdnStateCache* gdn_state = nullptr;
 
+    // SP-Flash hidden-state capture. Non-owning; null when not in use.
+    SpFlashCaptureCtx* sp_flash_capture = nullptr;
+
     // ---- Hybrid GDN arch hparams (qwen35moe + qwen35) ----------------
     // is_hybrid_gdn: true for any arch with GDN + attention layers.
     // is_moe:        true only when the FFN is MoE (qwen35moe).
@@ -485,6 +488,10 @@ void ForwardContext::bind_gdn_state(GdnStateCache* gdn) {
             gdn->n_layer(), gdn->n_gdn_layers(), gdn->conv_kernel(),
             gdn->conv_channels(), gdn->head_v_dim(), gdn->num_v_heads());
     }
+}
+
+void ForwardContext::bind_sp_flash_capture(SpFlashCaptureCtx* ctx) {
+    impl_->sp_flash_capture = ctx;
 }
 
 int ForwardContext::kv_pos() const { return impl_->kv_pos; }
@@ -2280,6 +2287,14 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
         cap_V.assign((size_t)impl_->n_layer, nullptr);
     }
 
+    // SP-Flash: hidden-state capture tensors, one per target layer.
+    const bool sp_cap_active = impl_->sp_flash_capture &&
+                                impl_->sp_flash_capture->active &&
+                                !impl_->sp_flash_capture->target_layer_ids.empty();
+    const int  n_sp_targets  = sp_cap_active
+        ? (int)impl_->sp_flash_capture->target_layer_ids.size() : 0;
+    std::vector<ggml_tensor*> sp_cap_x((size_t)n_sp_targets, nullptr);
+
     // MoE curriculum: per-layer expert-selection capture tensors.
     // When curriculum is active, the `selected` I32 tensor from ggml_top_k
     // is marked as a graph output so we can read back expert IDs post-compute
@@ -2400,6 +2415,19 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
         if (i == 0 && dbg_X_layer0) {
             x_layer0 = x;
             ggml_set_output(x_layer0);
+        }
+
+        // SP-Flash: mark hidden state as output for each target layer.
+        // `x` is on the critical path to logits, so ggml_set_output alone
+        // ensures it keeps its buffer — no extra build_forward_expand needed.
+        if (sp_cap_active) {
+            const auto& tids = impl_->sp_flash_capture->target_layer_ids;
+            for (int ti = 0; ti < n_sp_targets; ++ti) {
+                if (tids[(size_t)ti] == i) {
+                    ggml_set_output(x);
+                    sp_cap_x[(size_t)ti] = x;
+                }
+            }
         }
     }
 
@@ -2617,6 +2645,24 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
         const size_t nbytes = (size_t)n * impl_->n_embd * sizeof(float);
         dbg_X_layer0->resize((size_t)n * impl_->n_embd);
         ggml_backend_tensor_get(x_layer0, dbg_X_layer0->data(), 0, nbytes);
+    }
+
+    // SP-Flash: read back captured hidden states.
+    if (sp_cap_active) {
+        auto* sfc = impl_->sp_flash_capture;
+        sfc->n_embd = impl_->n_embd;
+        sfc->captured.resize((size_t)n_sp_targets);
+        for (int ti = 0; ti < n_sp_targets; ++ti) {
+            if (sp_cap_x[(size_t)ti]) {
+                const size_t nelems = (size_t)ggml_nelements(sp_cap_x[(size_t)ti]);
+                sfc->captured[(size_t)ti].resize(nelems);
+                ggml_backend_tensor_get(sp_cap_x[(size_t)ti],
+                                        sfc->captured[(size_t)ti].data(),
+                                        0, nelems * sizeof(float));
+            } else {
+                sfc->captured[(size_t)ti].clear();
+            }
+        }
     }
 
     // Persist the post-step GDN state back into the bound cache so the
@@ -3362,6 +3408,14 @@ bool ForwardContext::decode(int32_t token_id,
     std::vector<ggml_tensor*> cpy_K(impl_->n_layer, nullptr);
     std::vector<ggml_tensor*> cpy_V(impl_->n_layer, nullptr);
 
+    // SP-Flash hidden-state capture for decode (single-token step).
+    const bool sp_cap_active_dec = impl_->sp_flash_capture &&
+                                    impl_->sp_flash_capture->active &&
+                                    !impl_->sp_flash_capture->target_layer_ids.empty();
+    const int  n_sp_targets_dec  = sp_cap_active_dec
+        ? (int)impl_->sp_flash_capture->target_layer_ids.size() : 0;
+    std::vector<ggml_tensor*> sp_cap_x_dec((size_t)n_sp_targets_dec, nullptr);
+
     ggml_tensor* x_layer0 = nullptr;
     for (int L = 0; L < impl_->n_layer; ++L) {
         ggml_tensor* k_cap = nullptr;
@@ -3470,6 +3524,17 @@ bool ForwardContext::decode(int32_t token_id,
         if (L == 0 && dbg_X_layer0) {
             x_layer0 = x;
             ggml_set_output(x_layer0);
+        }
+
+        // SP-Flash: capture hidden state at target layers during decode.
+        if (sp_cap_active_dec) {
+            const auto& tids = impl_->sp_flash_capture->target_layer_ids;
+            for (int ti = 0; ti < n_sp_targets_dec; ++ti) {
+                if (tids[(size_t)ti] == L) {
+                    ggml_set_output(x);
+                    sp_cap_x_dec[(size_t)ti] = x;
+                }
+            }
         }
     }
     ggml_set_output(new_K_big);
@@ -3775,6 +3840,24 @@ bool ForwardContext::decode(int32_t token_id,
         const size_t nbytes = (size_t)impl_->n_embd * sizeof(float);
         dbg_X_layer0->resize((size_t)impl_->n_embd);
         ggml_backend_tensor_get(x_layer0, dbg_X_layer0->data(), 0, nbytes);
+    }
+
+    // SP-Flash: read back captured hidden states from decode step.
+    if (sp_cap_active_dec) {
+        auto* sfc = impl_->sp_flash_capture;
+        sfc->n_embd = impl_->n_embd;
+        sfc->captured.resize((size_t)n_sp_targets_dec);
+        for (int ti = 0; ti < n_sp_targets_dec; ++ti) {
+            if (sp_cap_x_dec[(size_t)ti]) {
+                const size_t nelems = (size_t)ggml_nelements(sp_cap_x_dec[(size_t)ti]);
+                sfc->captured[(size_t)ti].resize(nelems);
+                ggml_backend_tensor_get(sp_cap_x_dec[(size_t)ti],
+                                        sfc->captured[(size_t)ti].data(),
+                                        0, nelems * sizeof(float));
+            } else {
+                sfc->captured[(size_t)ti].clear();
+            }
+        }
     }
 
     ggml_free(gctx);

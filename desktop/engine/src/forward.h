@@ -40,6 +40,19 @@ namespace sp::engine {
 class LlamaWeights;
 class Model;
 
+// SP-Flash hidden-state capture context.
+// Bind via ForwardContext::bind_sp_flash_capture() before prefill/decode.
+// After each forward_full() or decode() call, captured[ti] contains the
+// fp32 hidden states for target_layer_ids[ti].
+// Prefill shape: n_embd × n_tokens (row-major).
+// Decode shape:  n_embd × 1.
+struct SpFlashCaptureCtx {
+    std::vector<int>                target_layer_ids;
+    std::vector<std::vector<float>> captured;
+    int                             n_embd = 0;
+    bool                            active = false;
+};
+
 // Narrow view of the positional-encoding knobs. Kept as a tiny struct
 // so ForwardContext::create stays call-site-light (most callers pass
 // the default = PrimePe lattice-aligned RoPE, α=0.17).
@@ -130,6 +143,12 @@ public:
     // so standard attention layers find their KV slots while GDN layers
     // find their recurrent state.
     void bind_gdn_state(class GdnStateCache* gdn);
+
+    // Bind an SP-Flash hidden-state capture context. Non-owning; caller
+    // owns the lifetime. Pass nullptr to detach. When bound and active,
+    // every forward_full() and decode() call populates ctx->captured
+    // for the layers listed in ctx->target_layer_ids.
+    void bind_sp_flash_capture(SpFlashCaptureCtx* ctx);
 
     // Run prefill: forward_full(token_ids) → write every layer's K/V
     // into the bound cache → advance kv_pos by token_ids.size().
