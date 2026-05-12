@@ -562,6 +562,51 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
                     q4k_n,
                     (double)q4k_bytes / (1024.0 * 1024.0 * 1024.0),
                     (double)(sp_time_us() - q4k_t0) / 1000.0);
+
+                // Stage 1D fp32 weights for hot layers. These are small
+                // (norms, ssm_a, dt_bias, conv1d, conv1d_bias) but the
+                // full-SSM GPU block needs them device-resident to skip
+                // per-call H2D. Only matters when SP_BEAST_GPU_SSM_FULL=1
+                // — staging them anyway is ~6 MB / 30 layers, negligible.
+                const char *fp32_kinds[] = {
+                    "attn_norm.weight",
+                    "post_attention_norm.weight",
+                    "ssm_a",
+                    "ssm_dt.bias",
+                    "ssm_norm.weight",
+                    "ssm_conv1d.weight",
+                    "ssm_conv1d.bias",
+                    NULL,
+                };
+                size_t fp32_n = 0, fp32_floats_total = 0;
+                for (uint32_t i = 0; i < engine->reservoir.tensor_count; i++) {
+                    sp_optane_tensor_t *t = &engine->reservoir.tensors[i];
+                    if (!t->ptr || t->type != SP_GGML_TYPE_F32) continue;
+                    if (t->gpu_w_fp32) continue;
+                    if (strncmp(t->name, "blk.", 4) != 0) continue;
+                    int layer_id = atoi(t->name + 4);
+                    if (layer_id < 0 || layer_id >= q4k_hot_n) continue;
+                    int hit = 0;
+                    for (int k = 0; fp32_kinds[k]; ++k)
+                        if (strstr(t->name, fp32_kinds[k])) { hit = 1; break; }
+                    if (!hit) continue;
+                    int n_floats = 1;
+                    for (uint32_t d = 0; d < t->n_dims; ++d)
+                        n_floats *= (int)t->ne[d];
+                    if (n_floats <= 0) continue;
+                    float *d_w = sp_beast_gpu_stage_fp32_raw(
+                        (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx,
+                        (const float *)t->ptr, n_floats);
+                    if (!d_w) break;
+                    t->gpu_w_fp32   = d_w;
+                    t->gpu_w_fp32_n = n_floats;
+                    ++fp32_n; fp32_floats_total += n_floats;
+                }
+                fprintf(stderr,
+                    "[sp-beast-gpu] Q4K-resident: also staged %zu fp32 1D "
+                    "tensors (%.2f MiB)\n",
+                    fp32_n,
+                    (double)(fp32_floats_total * 4) / (1024.0 * 1024.0));
             }
         }
 
@@ -846,6 +891,12 @@ void sp_beast_free(sp_beast_engine_t *engine) {
                     (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx,
                     t->gpu_w_q4k);
                 t->gpu_w_q4k = NULL;
+            }
+            if (t->gpu_w_fp32) {
+                sp_beast_gpu_free_weight(
+                    (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx,
+                    t->gpu_w_fp32);
+                t->gpu_w_fp32 = NULL;
             }
         }
         sp_beast_gpu_destroy((sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx);
@@ -2808,6 +2859,166 @@ static void beast_ssm_layer(sp_beast_engine_t *engine, float *x,
     free(output); free(attn_out);
 }
 
+#ifdef SP_WITH_CUDA
+// ── Full SSM block on GPU — one cudaStreamSynchronize per LAYER ──
+//
+// Mirrors beast_ssm_layer above but every step runs as a CUDA kernel on
+// the persistent stream. The residual x is uploaded once at entry and
+// downloaded once at exit; all intermediates (xn, qkv_buf, z_buf, alpha
+// raw, beta raw, gate vals, output, attn_out) plus the SSM state and
+// conv state stay device-resident across the layer (and across tokens
+// for the state buffers).
+//
+// Returns 1 if the GPU path completed successfully, 0 if any required
+// weight wasn't staged or a kernel failed (caller falls back to CPU).
+static int beast_ssm_layer_gpu(sp_beast_engine_t *engine, float *x,
+                                int l, int pos)
+{
+    if (!g_beast_gpu) return 0;
+    sp_optane_reservoir_t *res = &engine->reservoir;
+    const int n_embd      = (int)res->n_embd;
+    const int n_v_heads   = (int)res->ssm_dt_rank;     // 32
+    const int n_k_heads   = (int)res->ssm_n_groups;    // 16
+    const int head_k_dim  = (int)res->ssm_state_size;  // 128
+    const int d_inner     = (int)res->ssm_inner_size;  // 4096
+    const int head_v_dim  = d_inner / n_v_heads;       // 128
+    const int key_dim     = head_k_dim * n_k_heads;    // 2048
+    const int conv_dim    = key_dim * 2 + d_inner;     // 8192
+    const int conv_k      = (int)res->ssm_conv_kernel; // 4
+    const float eps       = res->rms_norm_eps;
+    char name[128];
+
+    // Resolve every tensor once and verify GPU residency.
+    #define FIND(_n) sp_optane_find_tensor(res, _n)
+    snprintf(name, sizeof(name), "blk.%d.attn_norm.weight", l);
+    const sp_optane_tensor_t *an    = FIND(name);
+    snprintf(name, sizeof(name), "blk.%d.attn_qkv.weight", l);
+    const sp_optane_tensor_t *wqkv  = FIND(name);
+    snprintf(name, sizeof(name), "blk.%d.attn_gate.weight", l);
+    const sp_optane_tensor_t *wz    = FIND(name);
+    snprintf(name, sizeof(name), "blk.%d.ssm_alpha.weight", l);
+    const sp_optane_tensor_t *walph = FIND(name);
+    snprintf(name, sizeof(name), "blk.%d.ssm_beta.weight", l);
+    const sp_optane_tensor_t *wbeta = FIND(name);
+    snprintf(name, sizeof(name), "blk.%d.ssm_a", l);
+    const sp_optane_tensor_t *ta    = FIND(name);
+    snprintf(name, sizeof(name), "blk.%d.ssm_dt.bias", l);
+    const sp_optane_tensor_t *tdt   = FIND(name);
+    snprintf(name, sizeof(name), "blk.%d.ssm_conv1d.weight", l);
+    const sp_optane_tensor_t *cw    = FIND(name);
+    snprintf(name, sizeof(name), "blk.%d.ssm_conv1d.bias", l);
+    const sp_optane_tensor_t *cb    = FIND(name);
+    snprintf(name, sizeof(name), "blk.%d.ssm_norm.weight", l);
+    const sp_optane_tensor_t *snorm = FIND(name);
+    snprintf(name, sizeof(name), "blk.%d.ssm_out.weight", l);
+    const sp_optane_tensor_t *wout  = FIND(name);
+    #undef FIND
+
+    if (!an || !an->gpu_w_fp32) return 0;
+    if (!wqkv || !wqkv->gpu_w_q4k) return 0;
+    if (!wz   || !wz->gpu_w_q4k)   return 0;
+    if (!walph|| !walph->gpu_w_q4k) return 0;
+    if (!wbeta|| !wbeta->gpu_w_q4k) return 0;
+    if (!ta   || !ta->gpu_w_fp32)  return 0;
+    if (!tdt  || !tdt->gpu_w_fp32) return 0;
+    if (!cw   || !cw->gpu_w_fp32)  return 0;
+    if (!snorm|| !snorm->gpu_w_fp32) return 0;
+    if (!wout || !wout->gpu_w_q4k) return 0;
+    // conv1d.bias is optional in some quants — allow NULL.
+
+    // Persistent device buffers (named for reuse across layers + tokens).
+    char nm[64];
+    float *d_x        = sp_beast_gpu_buf(g_beast_gpu, "ssm_x",        n_embd);
+    float *d_xn       = sp_beast_gpu_buf(g_beast_gpu, "ssm_xn",       n_embd);
+    float *d_qkv      = sp_beast_gpu_buf(g_beast_gpu, "ssm_qkv",      conv_dim);
+    float *d_z        = sp_beast_gpu_buf(g_beast_gpu, "ssm_z",        d_inner);
+    float *d_alpha    = sp_beast_gpu_buf(g_beast_gpu, "ssm_alpha_r",  n_v_heads);
+    float *d_beta     = sp_beast_gpu_buf(g_beast_gpu, "ssm_beta_r",   n_v_heads);
+    float *d_gate_v   = sp_beast_gpu_buf(g_beast_gpu, "ssm_gate_v",   n_v_heads);
+    float *d_beta_v   = sp_beast_gpu_buf(g_beast_gpu, "ssm_beta_v",   n_v_heads);
+    float *d_output   = sp_beast_gpu_buf(g_beast_gpu, "ssm_out_v",    d_inner);
+    float *d_attn_out = sp_beast_gpu_buf(g_beast_gpu, "ssm_attn_out", n_embd);
+    snprintf(nm, sizeof(nm), "ssm_state_L%d", l);
+    float *d_S = sp_beast_gpu_buf(g_beast_gpu, nm,
+                                    n_v_heads * head_k_dim * head_v_dim);
+    snprintf(nm, sizeof(nm), "conv_state_L%d", l);
+    float *d_cs = sp_beast_gpu_buf(g_beast_gpu, nm, (conv_k - 1) * conv_dim);
+
+    if (!d_x || !d_xn || !d_qkv || !d_z || !d_alpha || !d_beta ||
+        !d_gate_v || !d_beta_v || !d_output || !d_attn_out ||
+        !d_S || !d_cs) return 0;
+
+    int rc = 0;
+    rc |= sp_beast_gpu_upload(g_beast_gpu, d_x, x, n_embd);
+
+    // 1. RMS attn norm: xn = rmsnorm(x, attn_norm.w)
+    rc |= sp_beast_gpu_rms_norm(g_beast_gpu, d_x, an->gpu_w_fp32,
+                                  d_xn, n_embd, eps);
+
+    // 2. Four input projections from xn.
+    rc |= sp_beast_gpu_q4k_matvec_dd(g_beast_gpu, wqkv->gpu_w_q4k,
+                                       d_xn, d_qkv,   conv_dim,  n_embd);
+    rc |= sp_beast_gpu_q4k_matvec_dd(g_beast_gpu, wz->gpu_w_q4k,
+                                       d_xn, d_z,     d_inner,   n_embd);
+    rc |= sp_beast_gpu_q4k_matvec_dd(g_beast_gpu, walph->gpu_w_q4k,
+                                       d_xn, d_alpha, n_v_heads, n_embd);
+    rc |= sp_beast_gpu_q4k_matvec_dd(g_beast_gpu, wbeta->gpu_w_q4k,
+                                       d_xn, d_beta,  n_v_heads, n_embd);
+
+    // 3. Compute gate_vals + beta_vals.
+    rc |= sp_beast_gpu_gate_beta(g_beast_gpu,
+                                   d_alpha, d_beta,
+                                   ta->gpu_w_fp32, tdt->gpu_w_fp32,
+                                   d_gate_v, d_beta_v, n_v_heads);
+
+    // 4. Conv1d on qkv_buf (updates conv_state in-place).
+    rc |= sp_beast_gpu_conv1d(g_beast_gpu, d_qkv, d_cs,
+                                cw->gpu_w_fp32,
+                                cb ? cb->gpu_w_fp32 : NULL,
+                                conv_dim, conv_k);
+
+    // 5. SiLU on full conv output.
+    rc |= sp_beast_gpu_silu(g_beast_gpu, d_qkv, conv_dim);
+
+    // 6. L2 normalise Q and K per head (Q in [0,key_dim), K in [key_dim, 2*key_dim)).
+    rc |= sp_beast_gpu_l2_qk(g_beast_gpu,
+                               d_qkv,           // q_all
+                               d_qkv + key_dim, // k_all
+                               n_k_heads, head_k_dim);
+
+    // 7. Delta Net recurrence.
+    rc |= sp_beast_gpu_delta_net(g_beast_gpu,
+                                   d_qkv,                // q_all
+                                   d_qkv + key_dim,      // k_all
+                                   d_qkv + key_dim * 2,  // v_all
+                                   d_S, d_output,
+                                   d_gate_v, d_beta_v,
+                                   n_v_heads, n_k_heads,
+                                   head_k_dim, head_v_dim);
+
+    // 8. Group RMS norm on output (per head; norm_dim == head_v_dim normally).
+    rc |= sp_beast_gpu_ssm_norm(g_beast_gpu, d_output, snorm->gpu_w_fp32,
+                                  n_v_heads, head_v_dim,
+                                  (int)snorm->ne[0], eps);
+
+    // 9. Output gating: output *= silu(z).
+    rc |= sp_beast_gpu_silu_gate(g_beast_gpu, d_output, d_z, d_inner);
+
+    // 10. Output projection: attn_out = ssm_out @ output.
+    rc |= sp_beast_gpu_q4k_matvec_dd(g_beast_gpu, wout->gpu_w_q4k,
+                                       d_output, d_attn_out,
+                                       n_embd, d_inner);
+
+    // 11. Residual: x += attn_out.
+    rc |= sp_beast_gpu_add(g_beast_gpu, d_x, d_attn_out, n_embd);
+
+    rc |= sp_beast_gpu_download(g_beast_gpu, x, d_x, n_embd);
+    rc |= sp_beast_gpu_sync(g_beast_gpu);
+
+    return rc == 0;
+}
+#endif
+
 // ── Full attention layer (every full_attn_interval-th layer) ──
 static void beast_attn_layer(sp_beast_engine_t *engine, float *x,
                               int l, int pos) {
@@ -3017,7 +3228,19 @@ int sp_beast_forward(sp_beast_engine_t *engine,
             beast_attn_layer(engine, x, l, pos);
             if (trace_timing) t_attn += sp_time_us() - t0_blk;
         } else {
+#ifdef SP_WITH_CUDA
+            // Try full-GPU SSM block when SP_BEAST_GPU_SSM_FULL=1 AND all
+            // required weights are staged for this layer. Single sync per
+            // layer instead of one per matvec + Delta Net compute.
+            int gpu_done = 0;
+            const char *ssm_full = getenv("SP_BEAST_GPU_SSM_FULL");
+            if (ssm_full && ssm_full[0] == '1') {
+                gpu_done = beast_ssm_layer_gpu(engine, x, l, pos);
+            }
+            if (!gpu_done) beast_ssm_layer(engine, x, l, pos);
+#else
             beast_ssm_layer(engine, x, l, pos);
+#endif
             if (trace_timing) t_ssm += sp_time_us() - t0_blk;
         }
 

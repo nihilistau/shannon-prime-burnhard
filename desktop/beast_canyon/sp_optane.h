@@ -114,6 +114,11 @@ typedef struct {
     // with gpu_w_fp16 (we pick whichever was staged at boot).
     void       *gpu_w_q4k;             // raw Q4_K bytes in device memory
     size_t      gpu_w_q4k_bytes;       // total byte size of staged buffer
+    // Raw fp32 bytes in VRAM — for 1D weights (norms, biases, ssm_a,
+    // dt_bias) that are tiny but need device residency for the full-block
+    // SSM/attn GPU path. Allocated by sp_beast_gpu_stage_fp32_raw.
+    float      *gpu_w_fp32;
+    int         gpu_w_fp32_n;          // element count
 } sp_optane_tensor_t;
 
 // ============================================================================

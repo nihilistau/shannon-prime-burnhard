@@ -109,6 +109,40 @@ int sp_beast_gpu_rms_norm(sp_beast_gpu_ctx_t *ctx,
 int sp_beast_gpu_add(sp_beast_gpu_ctx_t *ctx,
                       float *d_y, const float *d_a, int n);
 
+// Stage a raw fp32 buffer to VRAM (for 1D weights — norms, biases,
+// ssm_a, dt_bias). Returns device pointer or NULL.
+float *sp_beast_gpu_stage_fp32_raw(sp_beast_gpu_ctx_t *ctx,
+                                     const float *host, int n);
+
+// SSM-block GPU kernel launchers (one per kernel in sp_beast_gpu_q4k.cu).
+// All take the ctx's stream implicitly via the wrappers below.
+int sp_beast_gpu_silu(sp_beast_gpu_ctx_t *ctx, float *d_x, int n);
+int sp_beast_gpu_silu_gate(sp_beast_gpu_ctx_t *ctx,
+                            float *d_y, const float *d_g, int n);
+int sp_beast_gpu_conv1d(sp_beast_gpu_ctx_t *ctx,
+                         float *d_qkv, float *d_conv_state,
+                         const float *d_conv_w, const float *d_conv_b,
+                         int conv_dim, int conv_k);
+int sp_beast_gpu_l2_qk(sp_beast_gpu_ctx_t *ctx,
+                        float *d_q, float *d_k,
+                        int n_k_heads, int head_k_dim);
+int sp_beast_gpu_ssm_norm(sp_beast_gpu_ctx_t *ctx,
+                           float *d_output, const float *d_weight,
+                           int n_v_heads, int head_v_dim, int norm_dim,
+                           float eps);
+int sp_beast_gpu_gate_beta(sp_beast_gpu_ctx_t *ctx,
+                            const float *alpha_raw, const float *beta_raw,
+                            const float *ssm_a, const float *dt_bias,
+                            float *gate_vals, float *beta_vals,
+                            int n_v_heads);
+int sp_beast_gpu_delta_net(sp_beast_gpu_ctx_t *ctx,
+                            const float *q_all, const float *k_all,
+                            const float *v_all,
+                            float *S_all, float *output,
+                            const float *gate_vals, const float *beta_vals,
+                            int n_v_heads, int n_k_heads,
+                            int head_k_dim, int head_v_dim);
+
 #endif // SP_WITH_CUDA
 
 #ifdef __cplusplus

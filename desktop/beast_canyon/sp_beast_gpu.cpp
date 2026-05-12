@@ -93,6 +93,12 @@ sp_beast_gpu_ctx_t *sp_beast_gpu_init(void) {
         SP_GPU_LOG("no CUDA device available");
         return NULL;
     }
+    // Spin-wait sync: poll instead of letting the WDDM driver block on
+    // an OS wait object. On Windows the default block-sync can take
+    // 1-10 ms per cudaStreamSynchronize even for completed work — fatal
+    // when we sync ~30 times per token. Spin trades a CPU core for
+    // sub-100us sync.
+    cudaSetDeviceFlags(cudaDeviceScheduleSpin);
     if (cudaSetDevice(0) != cudaSuccess) {
         SP_GPU_LOG("cudaSetDevice(0) failed");
         return NULL;
@@ -323,6 +329,103 @@ int sp_beast_gpu_add(sp_beast_gpu_ctx_t *ctx,
     if (!ctx || !d_y || !d_a || n <= 0) return -1;
     return (sp_beast_gpu_add_launch(d_y, d_a, n, ctx->stream)
             == cudaSuccess) ? 0 : -1;
+}
+
+float *sp_beast_gpu_stage_fp32_raw(sp_beast_gpu_ctx_t *ctx,
+                                     const float *host, int n) {
+    if (!ctx || !host || n <= 0) return NULL;
+    float *d = NULL;
+    if (cudaMalloc(&d, (size_t)n * sizeof(float)) != cudaSuccess) {
+        SP_GPU_LOG("stage_fp32_raw: cudaMalloc %d floats failed", n);
+        return NULL;
+    }
+    if (cudaMemcpy(d, host, (size_t)n * sizeof(float),
+                    cudaMemcpyHostToDevice) != cudaSuccess) {
+        SP_GPU_LOG("stage_fp32_raw: H2D copy failed");
+        cudaFree(d);
+        return NULL;
+    }
+    ctx->vram_bytes += (size_t)n * sizeof(float);
+    return d;
+}
+
+extern "C" cudaError_t sp_beast_gpu_silu_launch(float *, int, cudaStream_t);
+extern "C" cudaError_t sp_beast_gpu_silu_gate_launch(float *, const float *, int, cudaStream_t);
+extern "C" cudaError_t sp_beast_gpu_conv1d_launch(
+    float *, float *, const float *, const float *, int, int, cudaStream_t);
+extern "C" cudaError_t sp_beast_gpu_l2_qk_launch(
+    float *, float *, int, int, cudaStream_t);
+extern "C" cudaError_t sp_beast_gpu_ssm_norm_launch(
+    float *, const float *, int, int, int, float, cudaStream_t);
+extern "C" cudaError_t sp_beast_gpu_gate_beta_launch(
+    const float *, const float *, const float *, const float *,
+    float *, float *, int, cudaStream_t);
+extern "C" cudaError_t sp_beast_gpu_delta_net_launch(
+    const float *, const float *, const float *,
+    float *, float *, const float *, const float *,
+    int, int, int, int, cudaStream_t);
+
+int sp_beast_gpu_silu(sp_beast_gpu_ctx_t *ctx, float *d_x, int n) {
+    if (!ctx) return -1;
+    return sp_beast_gpu_silu_launch(d_x, n, ctx->stream) == cudaSuccess ? 0 : -1;
+}
+int sp_beast_gpu_silu_gate(sp_beast_gpu_ctx_t *ctx,
+                            float *d_y, const float *d_g, int n) {
+    if (!ctx) return -1;
+    return sp_beast_gpu_silu_gate_launch(d_y, d_g, n, ctx->stream)
+        == cudaSuccess ? 0 : -1;
+}
+int sp_beast_gpu_conv1d(sp_beast_gpu_ctx_t *ctx,
+                         float *d_qkv, float *d_conv_state,
+                         const float *d_conv_w, const float *d_conv_b,
+                         int conv_dim, int conv_k) {
+    if (!ctx) return -1;
+    return sp_beast_gpu_conv1d_launch(d_qkv, d_conv_state, d_conv_w,
+                                        d_conv_b, conv_dim, conv_k,
+                                        ctx->stream) == cudaSuccess ? 0 : -1;
+}
+int sp_beast_gpu_l2_qk(sp_beast_gpu_ctx_t *ctx,
+                        float *d_q, float *d_k,
+                        int n_k_heads, int head_k_dim) {
+    if (!ctx) return -1;
+    return sp_beast_gpu_l2_qk_launch(d_q, d_k, n_k_heads, head_k_dim,
+                                       ctx->stream) == cudaSuccess ? 0 : -1;
+}
+int sp_beast_gpu_ssm_norm(sp_beast_gpu_ctx_t *ctx,
+                           float *d_output, const float *d_weight,
+                           int n_v_heads, int head_v_dim, int norm_dim,
+                           float eps) {
+    if (!ctx) return -1;
+    return sp_beast_gpu_ssm_norm_launch(d_output, d_weight, n_v_heads,
+                                          head_v_dim, norm_dim, eps,
+                                          ctx->stream)
+        == cudaSuccess ? 0 : -1;
+}
+int sp_beast_gpu_gate_beta(sp_beast_gpu_ctx_t *ctx,
+                            const float *alpha_raw, const float *beta_raw,
+                            const float *ssm_a, const float *dt_bias,
+                            float *gate_vals, float *beta_vals,
+                            int n_v_heads) {
+    if (!ctx) return -1;
+    return sp_beast_gpu_gate_beta_launch(alpha_raw, beta_raw, ssm_a, dt_bias,
+                                          gate_vals, beta_vals, n_v_heads,
+                                          ctx->stream)
+        == cudaSuccess ? 0 : -1;
+}
+int sp_beast_gpu_delta_net(sp_beast_gpu_ctx_t *ctx,
+                            const float *q_all, const float *k_all,
+                            const float *v_all,
+                            float *S_all, float *output,
+                            const float *gate_vals, const float *beta_vals,
+                            int n_v_heads, int n_k_heads,
+                            int head_k_dim, int head_v_dim) {
+    if (!ctx) return -1;
+    return sp_beast_gpu_delta_net_launch(q_all, k_all, v_all, S_all, output,
+                                           gate_vals, beta_vals,
+                                           n_v_heads, n_k_heads,
+                                           head_k_dim, head_v_dim,
+                                           ctx->stream)
+        == cudaSuccess ? 0 : -1;
 }
 
 void *sp_beast_gpu_stage_q4k(sp_beast_gpu_ctx_t *ctx,
