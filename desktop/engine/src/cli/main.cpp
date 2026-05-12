@@ -1415,6 +1415,42 @@ int main(int argc, char** argv) {
             kv->cauchy_set_cooldown(cc.cauchy_cooldown);
         }
 
+#if defined(SP_ENGINE_WITH_BEAST)
+        // Beast Canyon short-circuit: when --beast is set, the entire chat
+        // forward (prefill + decode loop) runs through sp_beast_generate —
+        // Beast Canyon's own end-to-end inference engine. Bypasses ggml /
+        // ForwardContext entirely. The chat verb here is just I/O glue:
+        // tokenise prompt, hand to Beast, detokenise output, print.
+        // sp_beast_generate manages its own KV cache, sidecar speculative
+        // decode, Optane reservoir reads, and (eventually) dual-GPU dispatch.
+        if (beast_active) {
+            std::printf("%s", text.c_str());
+            std::fflush(stdout);
+            // sp_beast_generate uses C int (4-byte) for token IDs — convert
+            // from the engine's int32_t IDs (same width on x64 Windows but
+            // a typed conversion keeps the intent explicit).
+            std::vector<int> prompt_ints(ids.begin(), ids.end());
+            std::vector<int> output_ints((size_t)n_predict, 0);
+            const int n_gen = sp_beast_generate(&beast_engine,
+                                                 prompt_ints.data(), n_prompt,
+                                                 output_ints.data(), n_predict,
+                                                 /*temperature=*/0.0f,
+                                                 /*top_p=*/0.0f);
+            for (int i = 0; i < n_gen; ++i) {
+                std::vector<int32_t> one = { (int32_t)output_ints[(size_t)i] };
+                std::string piece = tk->decode(one);
+                std::printf("%s", piece.c_str());
+                std::fflush(stdout);
+            }
+            std::printf("\n");
+            std::fflush(stdout);
+            std::fprintf(stderr,
+                "[sp-engine] beast chat done: prompt=%d generated=%d\n",
+                n_prompt, n_gen);
+            return 0;
+        }
+#endif
+
         std::vector<float> last_logits;
         int n_vocab = 0;
         std::vector<int32_t> running = ids;  // for --naive path and cauchy refill

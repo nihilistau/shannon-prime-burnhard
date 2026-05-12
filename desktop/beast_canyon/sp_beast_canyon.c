@@ -1118,7 +1118,16 @@ static void beast_rms_norm(const float *x, const float *scale,
 }
 
 // Mat-vec: out[n_out] = W[n_out, n_in] @ x[n_in]
-// Dequants one row at a time into scratch, then dot product.
+// Dequants one row at a time into scratch, then dot product. The dot
+// product is the per-call hot loop (n_out * n_in mul-adds per matvec
+// — for Qwen3.6 35B-A3B that's 2048 * 512 = ~1M FMAs per gate/up tensor
+// per expert per token). When AVX-512 is available we vectorise the
+// dot to 16 fp32 lanes using FMA; otherwise we fall back to the scalar
+// loop. The dequant_row step is unchanged — it's cache-bound, not the
+// bottleneck the bench profiles flag.
+#if defined(__AVX512F__) || defined(_MSC_VER)
+#include <immintrin.h>
+#endif
 static void beast_matvec(const sp_optane_tensor_t *W,
                          const float *x, float *out, float *scratch,
                          int n_out, int n_in) {
@@ -1127,9 +1136,26 @@ static void beast_matvec(const sp_optane_tensor_t *W,
 
     for (int i = 0; i < n_out; i++) {
         beast_dequant_row(w_data + (size_t)i * rb, scratch, W->type, n_in);
+#if defined(__AVX512F__) || defined(_MSC_VER)
+        // Vectorised dot product. AVX-512 is available on i9-11900KB
+        // (Beast Canyon target). MSVC under /arch:AVX512 enables the
+        // intrinsics; GCC/Clang need -mavx512f. Fall back to scalar
+        // when the tail isn't 16-aligned.
+        __m512 acc = _mm512_setzero_ps();
+        int j = 0;
+        for (; j + 16 <= n_in; j += 16) {
+            __m512 a = _mm512_loadu_ps(scratch + j);
+            __m512 b = _mm512_loadu_ps(x       + j);
+            acc = _mm512_fmadd_ps(a, b, acc);
+        }
+        float sum = _mm512_reduce_add_ps(acc);
+        for (; j < n_in; ++j) sum += scratch[j] * x[j];
+        out[i] = sum;
+#else
         float sum = 0.0f;
         for (int j = 0; j < n_in; j++) sum += scratch[j] * x[j];
         out[i] = sum;
+#endif
     }
 }
 
