@@ -98,6 +98,16 @@ typedef struct {
     // this directly via the F32 type fast path.
     float      *fp32_stage;
     size_t      fp32_stage_floats;
+
+    // Optional GPU residency: half-precision weight in VRAM (cudaMalloc'd).
+    // Set during sp_beast_init when SP_BEAST_GPU_HOT_LAYERS=N is non-zero
+    // and this tensor falls within the hot set (attn QKVO + shared expert
+    // + router for the first N layers). When non-NULL beast_matvec_serial
+    // dispatches to sp_beast_gpu_matvec which runs cuBLAS gemv on the
+    // RTX device. Owned by sp_beast_gpu; freed in sp_beast_destroy.
+    void       *gpu_w_fp16;            // __half * in device memory
+    int         gpu_n_out;             // rows of staged matrix (== ne[1])
+    int         gpu_n_in;              // cols of staged matrix (== ne[0])
 } sp_optane_tensor_t;
 
 // ============================================================================

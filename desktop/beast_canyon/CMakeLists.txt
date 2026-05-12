@@ -21,6 +21,7 @@ set(SP_BEAST_SOURCES
     sp_prefetch_telemetry.c
     sp_shredder_crt.c
     sp_level_zero.c
+    sp_beast_gpu.cpp
 )
 
 set(SP_BEAST_HEADERS
@@ -34,6 +35,7 @@ set(SP_BEAST_HEADERS
     sp_prefetch_telemetry.h
     sp_shredder_crt.h
     sp_level_zero.h
+    sp_beast_gpu.h
 )
 
 # Library target
@@ -105,8 +107,8 @@ if(SP_WITH_CUDA)
                 target_link_libraries(sp_beast_canyon PUBLIC CUDA::cudart)
             endif()
         else()
-            target_link_libraries(sp_beast_canyon PUBLIC CUDA::cudart)
-            message(STATUS "Beast Canyon CUDA: ON (cudart from ${CUDAToolkit_LIBRARY_DIR})")
+            target_link_libraries(sp_beast_canyon PUBLIC CUDA::cudart CUDA::cublas)
+            message(STATUS "Beast Canyon CUDA: ON (cudart+cublas from ${CUDAToolkit_LIBRARY_DIR})")
         endif()
     else()
         message(WARNING "Beast Canyon: SP_WITH_CUDA=ON but CUDAToolkit not found — CUDA disabled")

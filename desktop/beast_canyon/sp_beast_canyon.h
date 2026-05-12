@@ -215,6 +215,14 @@ typedef struct sp_beast_engine_t {
     // the dequant entirely. Cap is set in sp_beast_canyon.c
     // (SP_BEAST_DEQUANT_CACHE_CAP, default 96 ≈ 1.2 GiB at 12 MiB/expert).
     void        *beast_dequant_cache;  // opaque, see beast_dequant_cache_t
+
+    // RTX/cuBLAS hot-stage context. Allocated when SP_BEAST_GPU_HOT_LAYERS=N
+    // is set at boot; weights for the first N layers' attn QKVO + shared
+    // expert + router get copied to VRAM as fp16 and beast_matvec
+    // dispatches to cublasGemmEx for those tensors. Type is
+    // `sp_beast_gpu_ctx_t *` from sp_beast_gpu.h.
+    void        *beast_gpu_ctx;
+    int          beast_gpu_hot_layers;  // N from env; 0 if disabled
 } sp_beast_engine_t;
 
 // ============================================================================

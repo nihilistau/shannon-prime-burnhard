@@ -7,6 +7,7 @@
 #include "sp_beast_canyon.h"
 #include "sp_shredder_crt.h"
 #include "sp_level_zero.h"
+#include "sp_beast_gpu.h"
 #include "../crt/sp_crt.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -174,6 +175,17 @@ static size_t beast_row_bytes(uint32_t type, int ne0);
 static void   beast_dequant_row(const void *src, float *dst, uint32_t type, int n);
 
 // ============================================================================
+// GPU dispatch handle
+// ============================================================================
+// beast_matvec_serial / beast_matvec are called deep inside the forward
+// pass without an engine pointer in scope. We stash the active GPU ctx
+// here at sp_beast_init time so those leaf kernels can check W->gpu_w_fp16
+// and dispatch to cuBLAS without a signature change.
+#ifdef SP_WITH_CUDA
+static sp_beast_gpu_ctx_t *g_beast_gpu = NULL;
+#endif
+
+// ============================================================================
 // Boot sequence
 // ============================================================================
 
@@ -269,6 +281,110 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
             (double)bytes_prestaged / (1024.0 * 1024.0 * 1024.0),
             ms);
     }
+
+    // ── Stage 1.6: Hot-stage non-expert weights to RTX VRAM (cuBLAS) ──
+    // For the first SP_BEAST_GPU_HOT_LAYERS layers, dequant attn QKVO +
+    // shared expert + router into fp16 VRAM. Per-token matvecs against
+    // those tensors then run on the RTX (336 GB/s) instead of the i9
+    // (~50 GB/s effective) — see sp_beast_gpu.h.
+#ifdef SP_WITH_CUDA
+    {
+        const char *gpu_env = getenv("SP_BEAST_GPU_HOT_LAYERS");
+        int n_hot = gpu_env ? atoi(gpu_env) : 0;
+        if (n_hot > 0) {
+            engine->beast_gpu_hot_layers = n_hot;
+            engine->beast_gpu_ctx = sp_beast_gpu_init();
+            if (!engine->beast_gpu_ctx) {
+                fprintf(stderr, "[sp-beast-gpu] init failed; "
+                        "falling back to CPU matvec\n");
+                engine->beast_gpu_hot_layers = 0;
+            } else {
+                g_beast_gpu = (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx;
+                uint64_t gpu_t0 = sp_time_us();
+                size_t   n_staged = 0;
+                size_t   bytes_staged = 0;
+                const size_t cap_bytes = (size_t)10 * 1024 * 1024 * 1024;
+                // Hot tensor name patterns. Routed expert banks
+                // (ffn_*_exps) intentionally excluded — they're too big
+                // to fit even one layer's worth in VRAM at full top-K
+                // and the GPU would spend all its time on H2D anyway.
+                const char *hot_kinds[] = {
+                    "attn_qkv.weight", "attn_q.weight", "attn_k.weight",
+                    "attn_v.weight",  "attn_o.weight",  "attn_output.weight",
+                    "attn_gate.weight",
+                    "ssm_alpha.weight", "ssm_beta.weight",
+                    "ssm_out.weight",   "ssm_in.weight",
+                    "ffn_gate_inp.weight",  // router
+                    "ffn_gate_inp_shexp.weight",
+                    "ffn_gate_shexp.weight",
+                    "ffn_up_shexp.weight",
+                    "ffn_down_shexp.weight",
+                    NULL,
+                };
+                for (uint32_t i = 0; i < engine->reservoir.tensor_count; i++) {
+                    sp_optane_tensor_t *t = &engine->reservoir.tensors[i];
+                    if (!t->ptr) continue;
+                    if (t->type == SP_GGML_TYPE_F32) continue;
+                    if (t->n_dims != 2) continue;
+                    // Layer-gated: parse "blk.<L>." prefix and skip if L >= n_hot.
+                    if (strncmp(t->name, "blk.", 4) != 0) continue;
+                    int layer_id = atoi(t->name + 4);
+                    if (layer_id < 0 || layer_id >= n_hot) continue;
+                    // Match against hot kinds list (suffix of name).
+                    int hit = 0;
+                    for (int k = 0; hot_kinds[k]; ++k) {
+                        if (strstr(t->name, hot_kinds[k])) { hit = 1; break; }
+                    }
+                    if (!hit) continue;
+
+                    int n_in  = (int)t->ne[0];
+                    int n_out = (int)t->ne[1];
+                    // Skip too-small matvecs — cuBLAS round-trip
+                    // (~30 us sync + ~5 us PCIe) exceeds the AVX-512
+                    // CPU cost when n_out * n_in < ~1M FMAs.
+                    if ((size_t)n_out * (size_t)n_in < 1000000) continue;
+                    size_t fp16_bytes = (size_t)n_in * (size_t)n_out * 2;
+                    if (bytes_staged + fp16_bytes > cap_bytes) break;
+
+                    // Dequant whole tensor to a temporary fp32 buffer,
+                    // then hand off to GPU (which converts to fp16 + H2D).
+                    size_t n_floats = (size_t)n_in * (size_t)n_out;
+                    float *tmp = (float *)malloc(n_floats * sizeof(float));
+                    if (!tmp) break;
+                    const size_t rb = beast_row_bytes(t->type, n_in);
+                    const uint8_t *src = (const uint8_t *)t->ptr;
+                    for (int r = 0; r < n_out; ++r) {
+                        beast_dequant_row(src + (size_t)r * rb,
+                                          tmp + (size_t)r * (size_t)n_in,
+                                          t->type, n_in);
+                    }
+                    void *d_w = sp_beast_gpu_stage_fp32(
+                        (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx,
+                        tmp, n_out, n_in);
+                    free(tmp);
+                    if (!d_w) {
+                        fprintf(stderr,
+                            "[sp-beast-gpu] stage failed at %s — stopping\n",
+                            t->name);
+                        break;
+                    }
+                    t->gpu_w_fp16 = d_w;
+                    t->gpu_n_out  = n_out;
+                    t->gpu_n_in   = n_in;
+                    ++n_staged;
+                    bytes_staged += fp16_bytes;
+                }
+                const double gpu_ms = (double)(sp_time_us() - gpu_t0) / 1000.0;
+                fprintf(stderr,
+                    "[sp-beast-gpu] staged %zu hot tensors "
+                    "(%.2f GiB fp16) for layers [0,%d) in %.1f ms\n",
+                    n_staged,
+                    (double)bytes_staged / (1024.0 * 1024.0 * 1024.0),
+                    n_hot, gpu_ms);
+            }
+        }
+    }
+#endif
 
     // ── Stage 2: Initialize the Shredder ────────────────────────────
     fprintf(stderr, "[BOOT] Stage 2: Initializing AVX-512 Shredder...\n");
@@ -475,6 +591,24 @@ void sp_beast_free(sp_beast_engine_t *engine) {
         free(c);
         engine->beast_dequant_cache = NULL;
     }
+
+#ifdef SP_WITH_CUDA
+    // Free hot-staged GPU weights, then the cuBLAS context.
+    if (engine->beast_gpu_ctx) {
+        for (uint32_t i = 0; i < engine->reservoir.tensor_count; i++) {
+            sp_optane_tensor_t *t = &engine->reservoir.tensors[i];
+            if (t->gpu_w_fp16) {
+                sp_beast_gpu_free_weight(
+                    (sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx,
+                    t->gpu_w_fp16);
+                t->gpu_w_fp16 = NULL;
+            }
+        }
+        sp_beast_gpu_destroy((sp_beast_gpu_ctx_t *)engine->beast_gpu_ctx);
+        engine->beast_gpu_ctx = NULL;
+        g_beast_gpu = NULL;
+    }
+#endif
 
     // Order matters: Level Zero/Vulkan before CUDA (per safeguard spec)
     sp_shadow_steal_log_efficiency(&engine->shadow_steal);
@@ -1626,6 +1760,20 @@ static void beast_rms_norm(const float *x, const float *scale,
 static void beast_matvec_serial(const sp_optane_tensor_t *W,
                                   const float *x, float *out,
                                   int n_out, int n_in) {
+#ifdef SP_WITH_CUDA
+    // GPU fast path: weight pre-staged as fp16 in VRAM. cuBLAS gemv
+    // wins big when the fp16 footprint fits VRAM and the per-call PCIe
+    // round-trip is amortised over n_out * n_in FMAs (worth it once
+    // n_out * n_in >= ~1e6 = 4 GFlops/sec equivalent).
+    if (g_beast_gpu && W->gpu_w_fp16 &&
+        W->gpu_n_out == n_out && W->gpu_n_in == n_in) {
+        if (sp_beast_gpu_matvec(g_beast_gpu, W->gpu_w_fp16,
+                                  x, out, n_out, n_in) == 0) {
+            return;
+        }
+        // On any GPU error, fall through to CPU path below.
+    }
+#endif
     // fp32_stage was deactivated: see commit message. fp32 weights are 7x
     // bigger than Q4_K, and we're memory-bandwidth bound, so reading the
     // fp32 buffer was SLOWER than reading Q4_K + dequant. Kept the loader
@@ -1682,6 +1830,15 @@ static void beast_matvec(const sp_optane_tensor_t *W,
                          const float *x, float *out, float *scratch,
                          int n_out, int n_in) {
     (void)scratch;
+#ifdef SP_WITH_CUDA
+    if (g_beast_gpu && W->gpu_w_fp16 &&
+        W->gpu_n_out == n_out && W->gpu_n_in == n_in) {
+        if (sp_beast_gpu_matvec(g_beast_gpu, W->gpu_w_fp16,
+                                  x, out, n_out, n_in) == 0) {
+            return;
+        }
+    }
+#endif
     if (0 && W->fp32_stage) {
         // (Deactivated; see beast_matvec_serial above for the reason.)
         const float *fp = W->fp32_stage;
