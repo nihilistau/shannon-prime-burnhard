@@ -138,6 +138,15 @@ struct SpFlashOracle::Impl {
     ggml_tensor* target_tok_embd = nullptr;
     ggml_tensor* target_output   = nullptr;
 
+    // When target_output->ne[0] != hidden_size we cannot directly mul_mat.
+    // A zero-pad projection is applied on the host: normed[hidden,bs] →
+    // padded[target_hidden,bs] (first hidden rows are normed, rest are 0).
+    int             target_hidden  = 0;     // target_output->ne[0]
+    ggml_gallocr_t  logit_allocr   = nullptr; // gallocr for the tiny logit graph
+    std::vector<float>   normed_buf;           // [hidden * max_block_size]
+    std::vector<float>   padded_buf;           // [target_hidden * max_block_size]
+    std::vector<uint8_t> logit_ctx_mem;        // 64 KB descriptor arena for logit graph
+
     // ggml CPU backend + graph allocator (reused across steps)
     ggml_backend_t   backend = nullptr;
     ggml_gallocr_t   allocr  = nullptr;
@@ -161,8 +170,9 @@ struct SpFlashOracle::Impl {
     std::vector<float>  kcorr_scratch;           // 2 * hidden_size floats
 
     ~Impl() {
-        if (allocr)  ggml_gallocr_free(allocr);
-        if (backend) ggml_backend_free(backend);
+        if (logit_allocr) ggml_gallocr_free(logit_allocr);
+        if (allocr)       ggml_gallocr_free(allocr);
+        if (backend)      ggml_backend_free(backend);
         // weights is owned by unique_ptr and cleaned up via unload_dflash_weights
     }
 };
@@ -208,6 +218,24 @@ std::unique_ptr<SpFlashOracle> SpFlashOracle::load(const Config& cfg) {
 
     I->target_tok_embd   = cfg.target_tok_embd;
     I->target_output     = cfg.target_output;
+
+    // Detect hidden-size mismatch between draft and target lm_head.
+    I->target_hidden = (int)cfg.target_output->ne[0];
+    if (I->target_hidden != I->hidden_size) {
+        if (I->target_hidden < I->hidden_size) {
+            std::fprintf(stderr,
+                "[sp-oracle] ERROR: target_hidden=%d < draft_hidden=%d; unsupported\n",
+                I->target_hidden, I->hidden_size);
+            return nullptr;
+        }
+        I->logit_allocr = ggml_gallocr_new(ggml_backend_cpu_buffer_type());
+        I->normed_buf.resize((size_t)I->hidden_size   * I->block_size);
+        I->padded_buf.assign((size_t)I->target_hidden * I->block_size, 0.0f);
+        I->logit_ctx_mem.resize(64 * 1024);
+        std::fprintf(stderr,
+            "[sp-oracle] NOTE: target_hidden=%d != draft_hidden=%d — zero-pad projection active\n",
+            I->target_hidden, I->hidden_size);
+    }
 
     I->adaptive          = cfg.adaptive;
     I->adaptive_hi       = cfg.adaptive_hi;
@@ -456,38 +484,45 @@ std::vector<int32_t> SpFlashOracle::step(
 
     // -----------------------------------------------------------------------
     // 7+8. Slice positions 1..bs, apply output_norm, project to vocab logits.
-    //      Positions 1..bs (0-indexed in x [hidden, seq_len]).
-    //      x is [hidden, seq_len]. We view rows 1..seq_len-1 = [hidden, bs].
+    //      x is [hidden, seq_len]. View rows 1..bs → draft_x [hidden, bs].
     // -----------------------------------------------------------------------
-    // ggml_view_2d: a [hidden, seq_len], extract [hidden, bs] starting at row 1
     size_t row_bytes = (size_t)hidden * sizeof(float);
     ggml_tensor* draft_x = ggml_view_2d(gctx, x, hidden, bs, row_bytes,
                                          /*offset=*/row_bytes);
-
-    // Mark draft_x as output so we can read back hidden states for K-corr.
     ggml_set_name(draft_x, "draft_hidden");
     ggml_set_output(draft_x);
 
-    // Apply output_norm
     ggml_tensor* normed = ggml_mul(gctx, ggml_rms_norm(gctx, draft_x, rms_eps), W->output_norm);
 
-    // Project to vocab: [hidden, bs] -> [vocab, bs]
-    // ggml_mul_mat(target_output, normed): target_output^T × normed
-    // target_output is [hidden, vocab] (ggml col-major) -> result [vocab, bs]
-    ggml_tensor* logits = ggml_mul_mat(gctx, I->target_output, normed);
-    ggml_set_name(logits, "draft_logits");
-    ggml_set_output(logits);
+    // When target_output->ne[0] == hidden: include the logit node directly.
+    // When dimensions differ (target_hidden > hidden): omit logit from this graph;
+    // normed is read back and zero-padded on the host before a tiny logit graph runs.
+    const bool mismatch = (I->target_hidden != hidden);
+
+    ggml_tensor* logits_node = nullptr;
+    if (!mismatch) {
+        // target_output is [hidden, vocab] col-major -> result [vocab, bs]
+        logits_node = ggml_mul_mat(gctx, I->target_output, normed);
+        ggml_set_name(logits_node, "draft_logits");
+        ggml_set_output(logits_node);
+    } else {
+        ggml_set_name(normed, "normed_out");
+        ggml_set_output(normed);
+    }
 
     // -----------------------------------------------------------------------
     // Build and compute the graph
     // -----------------------------------------------------------------------
-    // Use a large enough graph node count: 8 layers × ~20 ops + overhead
     const size_t graph_nodes = 512;
     ggml_cgraph* graph = ggml_new_graph_custom(gctx, graph_nodes, /*grads=*/false);
-    // Also expand mask_emb so it gets allocated (even though we fill x_input manually)
     ggml_build_forward_expand(graph, mask_emb);
     ggml_build_forward_expand(graph, ctx_vec);
-    ggml_build_forward_expand(graph, logits);
+    if (!mismatch) {
+        ggml_build_forward_expand(graph, logits_node);
+    } else {
+        ggml_build_forward_expand(graph, draft_x);
+        ggml_build_forward_expand(graph, normed);
+    }
 
     if (!ggml_gallocr_alloc_graph(I->allocr, graph)) {
         std::fprintf(stderr, "[sp-oracle] step(): gallocr_alloc_graph failed\n");
@@ -548,12 +583,64 @@ std::vector<int32_t> SpFlashOracle::step(
     // 9. Read draft logits + draft hidden states; greedy-sample draft tokens
     // -----------------------------------------------------------------------
     const int n_vocab = (int)I->target_output->ne[1];
-    // Sanity: ne[1] must be vocab_size (>> hidden_size) — guards against a
-    // transposed target_output tensor which would silently produce wrong logits.
     assert(n_vocab > I->hidden_size);
     std::vector<float> draft_logits((size_t)bs * n_vocab);
-    ggml_backend_tensor_get(logits, draft_logits.data(), 0,
-                            draft_logits.size() * sizeof(float));
+
+    if (!mismatch) {
+        ggml_backend_tensor_get(logits_node, draft_logits.data(), 0,
+                                draft_logits.size() * sizeof(float));
+    } else {
+        // Read normed [hidden, bs] from the main graph.
+        ggml_backend_tensor_get(normed, I->normed_buf.data(), 0,
+                                (size_t)hidden * bs * sizeof(float));
+
+        // Zero-pad: normed[hidden, bs] → padded[target_hidden, bs]
+        const int T = I->target_hidden;
+        for (int i = 0; i < bs; ++i) {
+            float* dst = I->padded_buf.data() + (size_t)i * T;
+            std::memcpy(dst, I->normed_buf.data() + (size_t)i * hidden,
+                        (size_t)hidden * sizeof(float));
+            std::memset(dst + hidden, 0, (size_t)(T - hidden) * sizeof(float));
+        }
+
+        // Tiny logit graph: logits = target_output^T × padded_input [target_hidden, bs]
+        ggml_init_params lgip = {};
+        lgip.mem_size   = I->logit_ctx_mem.size();
+        lgip.mem_buffer = I->logit_ctx_mem.data();
+        lgip.no_alloc   = true;
+        ggml_context* lgctx = ggml_init(lgip);
+        if (!lgctx) {
+            std::fprintf(stderr, "[sp-oracle] logit ggml_init failed\n");
+            ggml_free(gctx);
+            return {};
+        }
+
+        ggml_tensor* pad_in = ggml_new_tensor_2d(lgctx, GGML_TYPE_F32, T, bs);
+        ggml_set_input(pad_in);
+        ggml_tensor* logits_t = ggml_mul_mat(lgctx, I->target_output, pad_in);
+        ggml_set_output(logits_t);
+
+        ggml_cgraph* lgraph = ggml_new_graph_custom(lgctx, 8, false);
+        ggml_build_forward_expand(lgraph, logits_t);
+
+        if (!ggml_gallocr_alloc_graph(I->logit_allocr, lgraph)) {
+            std::fprintf(stderr, "[sp-oracle] logit gallocr_alloc_graph failed\n");
+            ggml_free(lgctx);
+            ggml_free(gctx);
+            return {};
+        }
+        ggml_backend_tensor_set(pad_in, I->padded_buf.data(), 0,
+                                (size_t)T * bs * sizeof(float));
+        if (ggml_backend_graph_compute(I->backend, lgraph) != GGML_STATUS_SUCCESS) {
+            std::fprintf(stderr, "[sp-oracle] logit graph compute failed\n");
+            ggml_free(lgctx);
+            ggml_free(gctx);
+            return {};
+        }
+        ggml_backend_tensor_get(logits_t, draft_logits.data(), 0,
+                                draft_logits.size() * sizeof(float));
+        ggml_free(lgctx);
+    }
 
     // Read draft hidden states [hidden, bs] for K-corr acceptance (Phase 2).
     // draft_x is a view of x starting at row 1; ggml lays it out contiguously

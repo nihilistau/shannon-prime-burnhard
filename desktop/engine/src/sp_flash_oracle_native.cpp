@@ -153,6 +153,10 @@ struct SpFlashOracleNative::Impl {
     // Non-owning pointer to target lm_head tensor.
     ggml_tensor* target_output = nullptr;
 
+    // When target_output->ne[0] != hidden_size, zero-pad noise_emb before upload.
+    int            target_hidden = 0;      // target_output->ne[0]
+    std::vector<float> padded_noise_buf;   // [target_hidden * block_size], if mismatch
+
     // ggml CPU backend + gallocr for the per-step logit projection graph.
     ggml_backend_t backend = nullptr;
     ggml_gallocr_t allocr  = nullptr;
@@ -293,20 +297,22 @@ std::unique_ptr<SpFlashOracleNative> SpFlashOracleNative::load(const Config& cfg
     }
 
     // -----------------------------------------------------------------------
-    // 4. Read mask embedding: one row from target_tok_embd.
-    //    target_tok_embd is [hidden_size, vocab_size] col-major → row mask_tok_id
-    //    starts at byte offset (mask_tok_id * hidden_size * sizeof(float)).
+    // 4. CPU backend + gallocr (needed before mask embedding readback).
     // -----------------------------------------------------------------------
-    I->mask_emb.resize((size_t)I->hidden_size);
-    ggml_backend_tensor_get(cfg.target_tok_embd,
-                            I->mask_emb.data(),
-                            (size_t)cfg.mask_tok_id * I->hidden_size * sizeof(float),
-                            (size_t)I->hidden_size * sizeof(float));
-
-    // -----------------------------------------------------------------------
-    // 5. CPU backend + gallocr for the per-step logit projection
-    // -----------------------------------------------------------------------
-    I->target_output = cfg.target_output;
+    I->target_output  = cfg.target_output;
+    I->target_hidden  = (int)cfg.target_output->ne[0];
+    if (I->target_hidden != I->hidden_size) {
+        if (I->target_hidden < I->hidden_size) {
+            std::fprintf(stderr,
+                "[sp-native] ERROR: target_hidden=%d < draft_hidden=%d; unsupported\n",
+                I->target_hidden, I->hidden_size);
+            return nullptr;
+        }
+        I->padded_noise_buf.assign((size_t)I->target_hidden * bs, 0.0f);
+        std::fprintf(stderr,
+            "[sp-native] NOTE: target_hidden=%d != draft_hidden=%d — zero-pad active\n",
+            I->target_hidden, I->hidden_size);
+    }
 
     I->backend = ggml_backend_cpu_init();
     if (!I->backend) {
@@ -319,6 +325,67 @@ std::unique_ptr<SpFlashOracleNative> SpFlashOracleNative::load(const Config& cfg
         return nullptr;
     }
     I->ctx_mem.resize(kNativeCtxSize);
+
+    // -----------------------------------------------------------------------
+    // 5. Read mask embedding: one row from target_tok_embd.
+    //    target_tok_embd may be F16, Q4_K_M, or any quantized type — we must
+    //    not use raw byte offsets assuming F32.  Use ggml_get_rows() which
+    //    dequantizes to F32 on the CPU backend regardless of source type.
+    // -----------------------------------------------------------------------
+    I->mask_emb.resize((size_t)I->hidden_size);
+    {
+        // Small scratch context: ggml_get_rows descriptor + one I32 tensor.
+        const size_t scratch_sz = 64 * 1024;
+        std::vector<uint8_t> scratch(scratch_sz);
+        ggml_init_params mip = {};
+        mip.mem_size   = scratch_sz;
+        mip.mem_buffer = scratch.data();
+        mip.no_alloc   = true;
+        ggml_context* mctx = ggml_init(mip);
+        if (!mctx) {
+            std::fprintf(stderr, "[sp-native] ggml_init failed for mask embed lookup\n");
+            return nullptr;
+        }
+
+        ggml_tensor* id_t = ggml_new_tensor_1d(mctx, GGML_TYPE_I32, 1);
+        ggml_set_name(id_t, "mask_id");
+        ggml_set_input(id_t);
+
+        // ggml_get_rows(src, ids): src[ids[i]] → output row i in F32
+        ggml_tensor* row = ggml_get_rows(mctx, cfg.target_tok_embd, id_t);
+        ggml_set_name(row, "mask_row");
+        ggml_set_output(row);
+
+        ggml_cgraph* mg = ggml_new_graph_custom(mctx, 8, false);
+        ggml_build_forward_expand(mg, row);
+
+        ggml_gallocr_t ma = ggml_gallocr_new(ggml_backend_cpu_buffer_type());
+        if (!ggml_gallocr_alloc_graph(ma, mg)) {
+            std::fprintf(stderr, "[sp-native] gallocr_alloc_graph failed for mask embed\n");
+            ggml_gallocr_free(ma);
+            ggml_free(mctx);
+            return nullptr;
+        }
+
+        const int32_t mid = (int32_t)cfg.mask_tok_id;
+        ggml_backend_tensor_set(id_t, &mid, 0, sizeof(int32_t));
+
+        if (ggml_backend_graph_compute(I->backend, mg) != GGML_STATUS_SUCCESS) {
+            std::fprintf(stderr, "[sp-native] mask embed compute failed\n");
+            ggml_gallocr_free(ma);
+            ggml_free(mctx);
+            return nullptr;
+        }
+
+        // row is [hidden_size, 1] F32 after get_rows on CPU backend
+        ggml_backend_tensor_get(row, I->mask_emb.data(), 0,
+                                (size_t)I->hidden_size * sizeof(float));
+
+        ggml_gallocr_free(ma);
+        ggml_free(mctx);
+    }
+    std::fprintf(stderr, "[sp-native] mask_tok_id=%d embedding loaded (type: %s)\n",
+                 cfg.mask_tok_id, ggml_type_name(cfg.target_tok_embd->type));
 
     // -----------------------------------------------------------------------
     // 6. K-corr floor + scratch; working buffers
@@ -433,11 +500,14 @@ std::vector<int32_t> SpFlashOracleNative::step(
         hidden);
 
     // -----------------------------------------------------------------------
-    // 5. Logit projection: noise_emb [bs, hidden] → logits [bs, vocab]
+    // 5. Logit projection: noise_emb [bs * hidden] → logits [bs * vocab]
     //    Tiny ggml graph: logits = target_output^T × noise_input
-    //    (target_output is [hidden, vocab] col-major; mul_mat gives [vocab, bs])
+    //    When target_hidden != hidden, noise_emb is zero-padded to target_hidden
+    //    on the host before upload so mul_mat dimensions are consistent.
     // -----------------------------------------------------------------------
-    const int n_vocab = (int)I->target_output->ne[1];
+    const int n_vocab     = (int)I->target_output->ne[1];
+    const int target_h    = I->target_hidden;
+    const bool mismatch   = (target_h != hidden);
     assert(n_vocab > hidden);
 
     ggml_init_params gip = {};
@@ -450,7 +520,8 @@ std::vector<int32_t> SpFlashOracleNative::step(
         return {};
     }
 
-    ggml_tensor* noise_input = ggml_new_tensor_2d(gctx, GGML_TYPE_F32, hidden, bs);
+    // Input tensor uses target_hidden as ne[0] (equals hidden when no mismatch).
+    ggml_tensor* noise_input = ggml_new_tensor_2d(gctx, GGML_TYPE_F32, target_h, bs);
     ggml_set_name(noise_input, "noise_input");
     ggml_set_input(noise_input);
 
@@ -467,9 +538,21 @@ std::vector<int32_t> SpFlashOracleNative::step(
         return {};
     }
 
-    // noise_emb is [bs, hidden] row-major == ggml [hidden, bs] col-major (same bytes).
-    ggml_backend_tensor_set(noise_input, I->noise_emb.data(), 0,
-                            (size_t)bs * hidden * sizeof(float));
+    if (!mismatch) {
+        // noise_emb is [bs, hidden] row-major == ggml [hidden, bs] col-major.
+        ggml_backend_tensor_set(noise_input, I->noise_emb.data(), 0,
+                                (size_t)bs * hidden * sizeof(float));
+    } else {
+        // Zero-pad: noise_emb[bs, hidden] → padded[bs, target_h]
+        for (int i = 0; i < bs; ++i) {
+            float* dst = I->padded_noise_buf.data() + (size_t)i * target_h;
+            std::memcpy(dst, I->noise_emb.data() + (size_t)i * hidden,
+                        (size_t)hidden * sizeof(float));
+            std::memset(dst + hidden, 0, (size_t)(target_h - hidden) * sizeof(float));
+        }
+        ggml_backend_tensor_set(noise_input, I->padded_noise_buf.data(), 0,
+                                (size_t)bs * target_h * sizeof(float));
+    }
 
     if (ggml_backend_graph_compute(I->backend, graph) != GGML_STATUS_SUCCESS) {
         std::fprintf(stderr, "[sp-native] step(): graph compute failed\n");
