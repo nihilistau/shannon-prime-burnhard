@@ -204,4 +204,355 @@ cudaError_t sp_beast_gpu_add_launch(float *d_y, const float *d_a, int n,
     return cudaGetLastError();
 }
 
+// ============================================================================
+// SSM block kernels — conv1d, SiLU, L2 norm per head, Delta Net recurrence
+// ============================================================================
+
+// SiLU elementwise: y[i] = x[i] / (1 + exp(-x[i])).
+__global__ void sp_silu_kernel(float *__restrict__ x, int n) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        const float v = x[i];
+        x[i] = v / (1.0f + __expf(-v));
+    }
+}
+
+cudaError_t sp_beast_gpu_silu_launch(float *d_x, int n, cudaStream_t stream) {
+    const int threads = 256;
+    const int blocks  = (n + threads - 1) / threads;
+    sp_silu_kernel<<<blocks, threads, 0, stream>>>(d_x, n);
+    return cudaGetLastError();
+}
+
+// Output gating: y[i] *= silu(g[i]).  In place on y, reads g.
+__global__ void sp_silu_gate_kernel(float *__restrict__ y,
+                                     const float *__restrict__ g, int n) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        const float gv = g[i];
+        y[i] *= gv / (1.0f + __expf(-gv));
+    }
+}
+
+cudaError_t sp_beast_gpu_silu_gate_launch(float *d_y, const float *d_g, int n,
+                                            cudaStream_t stream) {
+    const int threads = 256;
+    const int blocks  = (n + threads - 1) / threads;
+    sp_silu_gate_kernel<<<blocks, threads, 0, stream>>>(d_y, d_g, n);
+    return cudaGetLastError();
+}
+
+// Depthwise 4-tap conv1d for SSM.
+//
+// In: qkv_buf [conv_dim], conv_state [conv_k-1, conv_dim] (rolling window),
+//     conv_w [conv_k, conv_dim], conv_b [conv_dim].
+// Out: qkv_buf gets the conv output written in-place; conv_state is shifted
+//      and the new qkv_buf value pushed in as the newest slot.
+//
+// Algorithm per channel c (one thread):
+//   sum = conv_b[c]
+//   for t in [0, conv_k-1):  sum += conv_state[t, c] * conv_w[t, c]
+//   sum += qkv_buf[c] * conv_w[conv_k-1, c]
+//   shift conv_state by one (conv_state[t] = conv_state[t+1], last = qkv_buf[c])
+//   qkv_buf[c] = sum
+__global__ void sp_conv1d_4tap_kernel(
+    float *__restrict__ qkv_buf,
+    float *__restrict__ conv_state,
+    const float *__restrict__ conv_w,
+    const float *__restrict__ conv_b,
+    int conv_dim, int conv_k)
+{
+    const int c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (c >= conv_dim) return;
+
+    const float new_v = qkv_buf[c];
+    float sum = (conv_b ? conv_b[c] : 0.0f);
+    // Older taps from state.
+    for (int t = 0; t < conv_k - 1; ++t) {
+        sum += conv_state[(size_t)t * conv_dim + c] * conv_w[(size_t)t * conv_dim + c];
+    }
+    // Current tap (qkv_buf is the newest).
+    sum += new_v * conv_w[(size_t)(conv_k - 1) * conv_dim + c];
+
+    // Shift state: state[0..k-2] = state[1..k-1]; state[k-2] = new_v.
+    for (int t = 0; t < conv_k - 2; ++t) {
+        conv_state[(size_t)t * conv_dim + c] =
+            conv_state[(size_t)(t + 1) * conv_dim + c];
+    }
+    conv_state[(size_t)(conv_k - 2) * conv_dim + c] = new_v;
+
+    qkv_buf[c] = sum;
+}
+
+cudaError_t sp_beast_gpu_conv1d_launch(
+    float *d_qkv_buf, float *d_conv_state,
+    const float *d_conv_w, const float *d_conv_b,
+    int conv_dim, int conv_k, cudaStream_t stream)
+{
+    const int threads = 256;
+    const int blocks  = (conv_dim + threads - 1) / threads;
+    sp_conv1d_4tap_kernel<<<blocks, threads, 0, stream>>>(
+        d_qkv_buf, d_conv_state, d_conv_w, d_conv_b, conv_dim, conv_k);
+    return cudaGetLastError();
+}
+
+// L2 normalise Q and K per head, in-place.
+// q_all [key_dim], k_all [key_dim],  key_dim = n_k_heads * head_k_dim.
+// One block per head, threads cooperatively reduce ||v||² and normalise.
+__global__ void sp_l2_norm_qk_kernel(
+    float *__restrict__ q_all, float *__restrict__ k_all,
+    int head_k_dim)
+{
+    const int h    = blockIdx.x;   // head id
+    const int tid  = threadIdx.x;
+    const int T    = blockDim.x;
+    float *qh = q_all + (size_t)h * head_k_dim;
+    float *kh = k_all + (size_t)h * head_k_dim;
+
+    __shared__ float qsum[32];
+    __shared__ float ksum[32];
+
+    // Partial reductions across threads.
+    float qp = 0.0f, kp = 0.0f;
+    for (int i = tid; i < head_k_dim; i += T) {
+        const float qv = qh[i]; qp += qv * qv;
+        const float kv = kh[i]; kp += kv * kv;
+    }
+    #pragma unroll
+    for (int off = 16; off > 0; off >>= 1) {
+        qp += __shfl_xor_sync(0xFFFFFFFF, qp, off);
+        kp += __shfl_xor_sync(0xFFFFFFFF, kp, off);
+    }
+    const int warp_id = tid >> 5;
+    const int lane    = tid & 31;
+    if (lane == 0) { qsum[warp_id] = qp; ksum[warp_id] = kp; }
+    __syncthreads();
+    if (tid < 32) {
+        const int n_warps = (T + 31) >> 5;
+        float q2 = (tid < n_warps) ? qsum[tid] : 0.0f;
+        float k2 = (tid < n_warps) ? ksum[tid] : 0.0f;
+        #pragma unroll
+        for (int off = 16; off > 0; off >>= 1) {
+            q2 += __shfl_xor_sync(0xFFFFFFFF, q2, off);
+            k2 += __shfl_xor_sync(0xFFFFFFFF, k2, off);
+        }
+        if (tid == 0) { qsum[0] = q2; ksum[0] = k2; }
+    }
+    __syncthreads();
+    const float q_inv = rsqrtf(qsum[0]) + 0.0f;       // approx with no eps
+    const float k_inv = rsqrtf(ksum[0]) + 0.0f;
+    // Note: scalar reference uses 1.0 / (sqrt(sum) + 1e-12). With rsqrtf
+    // the eps is dropped — head_k_dim=128 elements squared are nowhere
+    // near underflow for trained weights. Verified matching token IDs.
+    for (int i = tid; i < head_k_dim; i += T) {
+        qh[i] *= q_inv;
+        kh[i] *= k_inv;
+    }
+}
+
+cudaError_t sp_beast_gpu_l2_qk_launch(
+    float *d_q, float *d_k, int n_k_heads, int head_k_dim,
+    cudaStream_t stream)
+{
+    const int threads = 128;
+    sp_l2_norm_qk_kernel<<<n_k_heads, threads, 0, stream>>>(
+        d_q, d_k, head_k_dim);
+    return cudaGetLastError();
+}
+
+// Group RMS norm over per-head output: for each head, normalise the
+// head_v_dim segment to unit RMS and scale by weight[i % norm_dim].
+__global__ void sp_ssm_norm_kernel(
+    float *__restrict__ output, const float *__restrict__ weight,
+    int n_v_heads, int head_v_dim, int norm_dim, float eps)
+{
+    const int h   = blockIdx.x;
+    const int tid = threadIdx.x;
+    const int T   = blockDim.x;
+    float *seg = output + (size_t)h * head_v_dim;
+    const int slen = (norm_dim < head_v_dim) ? norm_dim : head_v_dim;
+
+    __shared__ float ss_buf[32];
+    float partial = 0.0f;
+    for (int i = tid; i < slen; i += T) {
+        const float v = seg[i];
+        partial += v * v;
+    }
+    #pragma unroll
+    for (int off = 16; off > 0; off >>= 1)
+        partial += __shfl_xor_sync(0xFFFFFFFF, partial, off);
+    const int warp_id = tid >> 5;
+    const int lane    = tid & 31;
+    if (lane == 0) ss_buf[warp_id] = partial;
+    __syncthreads();
+    if (tid < 32) {
+        const int n_warps = (T + 31) >> 5;
+        float ss = (tid < n_warps) ? ss_buf[tid] : 0.0f;
+        #pragma unroll
+        for (int off = 16; off > 0; off >>= 1)
+            ss += __shfl_xor_sync(0xFFFFFFFF, ss, off);
+        if (tid == 0) ss_buf[0] = ss;
+    }
+    __syncthreads();
+    const float inv = rsqrtf(ss_buf[0] / (float)slen + eps);
+    for (int i = tid; i < slen; i += T) {
+        seg[i] *= inv * weight[i % norm_dim];
+    }
+}
+
+cudaError_t sp_beast_gpu_ssm_norm_launch(
+    float *d_output, const float *d_weight,
+    int n_v_heads, int head_v_dim, int norm_dim, float eps,
+    cudaStream_t stream)
+{
+    const int threads = 128;
+    sp_ssm_norm_kernel<<<n_v_heads, threads, 0, stream>>>(
+        d_output, d_weight, n_v_heads, head_v_dim, norm_dim, eps);
+    return cudaGetLastError();
+}
+
+// Compute per-head gate and beta scalars from alpha_raw, beta_raw, ssm_a,
+// dt_bias. One thread per head.
+//   gate = exp(softplus(alpha_raw + dt_bias) * ssm_a)
+//   beta = sigmoid(beta_raw)
+__global__ void sp_ssm_gate_beta_kernel(
+    const float *__restrict__ alpha_raw,
+    const float *__restrict__ beta_raw,
+    const float *__restrict__ ssm_a,
+    const float *__restrict__ dt_bias,
+    float *__restrict__ gate_vals,
+    float *__restrict__ beta_vals,
+    int n_v_heads)
+{
+    const int h = blockIdx.x * blockDim.x + threadIdx.x;
+    if (h >= n_v_heads) return;
+    const float a_raw = alpha_raw[h] + dt_bias[h];
+    // softplus(x) = log(1+exp(x)); numerically safe for moderate x.
+    const float sp = __logf(1.0f + __expf(a_raw));
+    gate_vals[h]  = __expf(sp * ssm_a[h]);
+    const float b = beta_raw[h];
+    beta_vals[h]  = 1.0f / (1.0f + __expf(-b));
+}
+
+cudaError_t sp_beast_gpu_gate_beta_launch(
+    const float *alpha_raw, const float *beta_raw,
+    const float *ssm_a, const float *dt_bias,
+    float *gate_vals, float *beta_vals,
+    int n_v_heads, cudaStream_t stream)
+{
+    const int threads = 32;
+    const int blocks = (n_v_heads + threads - 1) / threads;
+    sp_ssm_gate_beta_kernel<<<blocks, threads, 0, stream>>>(
+        alpha_raw, beta_raw, ssm_a, dt_bias, gate_vals, beta_vals, n_v_heads);
+    return cudaGetLastError();
+}
+
+// Delta Net recurrence — one BLOCK per (v-)head; threads cooperate to
+// process head_k_dim x head_v_dim state.
+//
+// Per head h:
+//   kh, qh = K-group's K and Q vectors [head_k_dim]
+//   vh     = V vector for this head     [head_v_dim]
+//   Sh     = state                       [head_k_dim x head_v_dim] (row-major)
+//   oh     = output                      [head_v_dim]
+//   gate, beta scalars
+//
+// 1. Decay:   Sh *= gate
+// 2. Retrieve: sk = S^T @ k  → [head_v_dim]
+// 3. Delta:   d = (v - sk) * beta
+// 4. Update:  S += outer(k, d)
+// 5. Query:   o = scale * (S @ q)
+//
+// All five steps share the head's state, so doing them in one kernel
+// keeps Sh resident in (effectively) the L1/L2 cache for the whole head.
+__global__ void sp_delta_net_kernel(
+    const float *__restrict__ q_all, const float *__restrict__ k_all,
+    const float *__restrict__ v_all,
+    float       *__restrict__ S_all,    // [n_v_heads * head_k_dim * head_v_dim]
+    float       *__restrict__ output,   // [n_v_heads * head_v_dim]
+    const float *__restrict__ gate_vals,
+    const float *__restrict__ beta_vals,
+    int n_v_heads, int n_k_heads, int head_k_dim, int head_v_dim)
+{
+    const int h    = blockIdx.x;
+    const int tid  = threadIdx.x;
+    const int T    = blockDim.x;
+    const int heads_per_group = n_v_heads / n_k_heads;
+    const int kh_idx = h / heads_per_group;
+
+    const float *qh = q_all + (size_t)kh_idx * head_k_dim;
+    const float *kh = k_all + (size_t)kh_idx * head_k_dim;
+    const float *vh = v_all + (size_t)h * head_v_dim;
+    float *Sh = S_all + (size_t)h * (size_t)head_k_dim * head_v_dim;
+    float *oh = output + (size_t)h * head_v_dim;
+    const float gate  = gate_vals[h];
+    const float beta  = beta_vals[h];
+    const float scale = rsqrtf((float)head_k_dim);
+
+    const int state_n = head_k_dim * head_v_dim;
+
+    // 1. Decay.
+    for (int i = tid; i < state_n; i += T) Sh[i] *= gate;
+    __syncthreads();
+
+    // 2. Retrieve: sk[j] = sum_i Sh[i,j] * kh[i].
+    // Use shared mem to hold sk vector (head_v_dim).
+    __shared__ float sk[256];
+    __shared__ float d_vec[256];
+    for (int j = tid; j < head_v_dim; j += T) sk[j] = 0.0f;
+    __syncthreads();
+
+    // Each thread handles one (i, j) pair stride, accumulating into sk[j].
+    // Simpler: one thread per j, loop over i. head_v_dim=128 -> 128 threads
+    // exactly. Each does 128 reads.
+    for (int j = tid; j < head_v_dim; j += T) {
+        float s = 0.0f;
+        for (int i = 0; i < head_k_dim; ++i) {
+            s += Sh[(size_t)i * head_v_dim + j] * kh[i];
+        }
+        sk[j] = s;
+    }
+    __syncthreads();
+
+    // 3. Delta vector.
+    for (int j = tid; j < head_v_dim; j += T) {
+        d_vec[j] = (vh[j] - sk[j]) * beta;
+    }
+    __syncthreads();
+
+    // 4. Update: Sh[i,j] += kh[i] * d[j].
+    // Parallelise over i; each thread does the full head_v_dim row.
+    for (int i = tid; i < head_k_dim; i += T) {
+        const float ki = kh[i];
+        float *row = Sh + (size_t)i * head_v_dim;
+        for (int j = 0; j < head_v_dim; ++j) {
+            row[j] = fmaf(ki, d_vec[j], row[j]);
+        }
+    }
+    __syncthreads();
+
+    // 5. Query: oh[j] = scale * sum_i Sh[i,j] * qh[i].
+    for (int j = tid; j < head_v_dim; j += T) {
+        float s = 0.0f;
+        for (int i = 0; i < head_k_dim; ++i) {
+            s += Sh[(size_t)i * head_v_dim + j] * qh[i];
+        }
+        oh[j] = s * scale;
+    }
+}
+
+cudaError_t sp_beast_gpu_delta_net_launch(
+    const float *q_all, const float *k_all, const float *v_all,
+    float *S_all, float *output,
+    const float *gate_vals, const float *beta_vals,
+    int n_v_heads, int n_k_heads, int head_k_dim, int head_v_dim,
+    cudaStream_t stream)
+{
+    const int threads = 128;
+    sp_delta_net_kernel<<<n_v_heads, threads, 0, stream>>>(
+        q_all, k_all, v_all, S_all, output, gate_vals, beta_vals,
+        n_v_heads, n_k_heads, head_k_dim, head_v_dim);
+    return cudaGetLastError();
+}
+
 } // extern "C"
