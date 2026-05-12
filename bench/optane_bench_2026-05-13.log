@@ -1,0 +1,1325 @@
+=== 32GB OPTANE F: ===                                                              
+--- T1 4k random read QD=1 1t  (small-read latency) ---                            
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -r -b4k -t1 -o1 -L -h F:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'F:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 4KiB
+		using random I/O (alignment: 4KiB)
+		number of outstanding I/O operations per thread: 1
+		threads per file: 1
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:26:57 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.01s
+thread count:		1
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0|  45.71%|   2.96%|  42.75%|  54.29%
+    0|    1|  16.85%|   4.21%|  12.64%|  83.15%
+    1|    2|   7.18%|   2.50%|   4.68%|  92.82%
+    1|    3|   2.50%|   0.94%|   1.56%|  97.50%
+    2|    4|   2.03%|   0.78%|   1.25%|  97.97%
+    2|    5|   2.34%|   0.94%|   1.40%|  97.66%
+    3|    6|   5.62%|   4.21%|   1.40%|  94.38%
+    3|    7|   1.87%|   0.94%|   0.94%|  98.13%
+    4|    8|   2.34%|   0.47%|   1.87%|  97.66%
+    4|    9|   2.03%|   0.78%|   1.25%|  97.97%
+    5|   10|  13.10%|   1.09%|  12.01%|  86.90%
+    5|   11|   3.90%|   2.96%|   0.94%|  96.10%
+    6|   12|   0.31%|   0.00%|   0.31%|  99.69%
+    6|   13|   0.16%|   0.00%|   0.16%|  99.84%
+    7|   14|   1.72%|   0.31%|   1.40%|  98.28%
+    7|   15|   0.31%|   0.00%|   0.31%|  99.69%
+-----------------------------------------------
+       avg.|   6.75%|   1.44%|   5.30%|  93.25%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      2279542784 |       556529 |     217.13 |   55585.43 |    0.018 |     0.019 | F:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        2279542784 |       556529 |     217.13 |   55585.43 |    0.018 |     0.019
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      2279542784 |       556529 |     217.13 |   55585.43 |    0.018 |     0.019 | F:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        2279542784 |       556529 |     217.13 |   55585.43 |    0.018 |     0.019
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | F:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      0.014 |        N/A |      0.014
+   25th |      0.016 |        N/A |      0.016
+   50th |      0.017 |        N/A |      0.017
+   75th |      0.017 |        N/A |      0.017
+   90th |      0.021 |        N/A |      0.021
+   95th |      0.023 |        N/A |      0.023
+   99th |      0.029 |        N/A |      0.029
+3-nines |      0.076 |        N/A |      0.076
+4-nines |      0.495 |        N/A |      0.495
+5-nines |      2.290 |        N/A |      2.290
+6-nines |      6.728 |        N/A |      6.728
+7-nines |      6.728 |        N/A |      6.728
+8-nines |      6.728 |        N/A |      6.728
+9-nines |      6.728 |        N/A |      6.728
+    max |      6.728 |        N/A |      6.728
+--- T2 4k random read QD=32 4t (small-read throughput) ---                         
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -r -b4k -t4 -o32 -L -h F:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'F:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 4KiB
+		using random I/O (alignment: 4KiB)
+		number of outstanding I/O operations per thread: 32
+		threads per file: 4
+		using I/O Completion Ports
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:27:12 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.02s
+thread count:		4
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0| 100.00%|   4.37%|  95.63%|   0.00%
+    0|    1| 100.00%|   4.37%|  95.63%|   0.00%
+    1|    2| 100.00%|   2.65%|  97.35%|   0.00%
+    1|    3| 100.00%|   2.81%|  97.19%|   0.00%
+    2|    4|   9.98%|   2.50%|   7.49%|  90.02%
+    2|    5|   5.46%|   2.03%|   3.43%|  94.54%
+    3|    6|  12.64%|   8.58%|   4.06%|  87.36%
+    3|    7|   4.84%|   1.87%|   2.96%|  95.16%
+    4|    8|   7.96%|   2.65%|   5.30%|  92.04%
+    4|    9|   6.86%|   3.12%|   3.74%|  93.14%
+    5|   10|  54.76%|   3.74%|  51.01%|  45.24%
+    5|   11|  49.61%|   4.99%|  44.62%|  50.39%
+    6|   12|   2.18%|   0.78%|   1.40%|  97.82%
+    6|   13|   1.09%|   0.31%|   0.78%|  98.91%
+    7|   14|   2.81%|   0.47%|   2.34%|  97.19%
+    7|   15|   1.09%|   0.47%|   0.62%|  98.91%
+-----------------------------------------------
+       avg.|  34.96%|   2.86%|  32.10%|  65.04%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      3282558976 |       801406 |     312.57 |   80019.02 |    0.078 |     0.063 | F:\diskspd_test.dat (1GiB)
+     1 |      3285544960 |       802135 |     312.86 |   80091.81 |    0.077 |     0.055 | F:\diskspd_test.dat (1GiB)
+     2 |      3149205504 |       768849 |     299.88 |   76768.26 |    0.065 |     0.040 | F:\diskspd_test.dat (1GiB)
+     3 |      3231784960 |       789010 |     307.74 |   78781.31 |    0.065 |     0.040 | F:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       12949094400 |      3161400 |    1233.05 |  315660.41 |    0.071 |     0.051
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      3282558976 |       801406 |     312.57 |   80019.02 |    0.078 |     0.063 | F:\diskspd_test.dat (1GiB)
+     1 |      3285544960 |       802135 |     312.86 |   80091.81 |    0.077 |     0.055 | F:\diskspd_test.dat (1GiB)
+     2 |      3149205504 |       768849 |     299.88 |   76768.26 |    0.065 |     0.040 | F:\diskspd_test.dat (1GiB)
+     3 |      3231784960 |       789010 |     307.74 |   78781.31 |    0.065 |     0.040 | F:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       12949094400 |      3161400 |    1233.05 |  315660.41 |    0.071 |     0.051
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | F:\diskspd_test.dat (1GiB)
+     1 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | F:\diskspd_test.dat (1GiB)
+     2 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | F:\diskspd_test.dat (1GiB)
+     3 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | F:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      0.015 |        N/A |      0.015
+   25th |      0.038 |        N/A |      0.038
+   50th |      0.051 |        N/A |      0.051
+   75th |      0.096 |        N/A |      0.096
+   90th |      0.134 |        N/A |      0.134
+   95th |      0.170 |        N/A |      0.170
+   99th |      0.244 |        N/A |      0.244
+3-nines |      0.344 |        N/A |      0.344
+4-nines |      0.509 |        N/A |      0.509
+5-nines |      2.896 |        N/A |      2.896
+6-nines |      4.028 |        N/A |      4.028
+7-nines |      5.200 |        N/A |      5.200
+8-nines |      5.200 |        N/A |      5.200
+9-nines |      5.200 |        N/A |      5.200
+    max |      5.200 |        N/A |      5.200
+--- T3 1M sequential read QD=4 2t (bandwidth) ---                                  
+WARNING: target access pattern will not be sequential, consider -si
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -b1M -t2 -o4 -L -h F:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'F:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 1MiB
+		using sequential I/O (stride: 1MiB)
+		number of outstanding I/O operations per thread: 4
+		threads per file: 2
+		using I/O Completion Ports
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:27:27 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.01s
+thread count:		2
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0|   4.52%|   0.31%|   4.21%|  95.48%
+    0|    1|   4.99%|   0.47%|   4.52%|  95.01%
+    1|    2|  14.98%|   4.52%|  10.45%|  85.02%
+    1|    3|   5.15%|   1.72%|   3.43%|  94.85%
+    2|    4|   1.25%|   0.16%|   1.09%|  98.75%
+    2|    5|   1.72%|   0.47%|   1.25%|  98.28%
+    3|    6|   2.96%|   2.50%|   0.47%|  97.04%
+    3|    7|   2.18%|   0.94%|   1.25%|  97.82%
+    4|    8|   2.34%|   1.40%|   0.94%|  97.66%
+    4|    9|   2.03%|   0.94%|   1.09%|  97.97%
+    5|   10|   4.21%|   1.72%|   2.50%|  95.79%
+    5|   11|   7.80%|   5.93%|   1.87%|  92.20%
+    6|   12|   0.94%|   0.00%|   0.94%|  99.06%
+    6|   13|   0.62%|   0.31%|   0.31%|  99.38%
+    7|   14|   1.25%|   0.31%|   0.94%|  98.75%
+    7|   15|   0.31%|   0.00%|   0.31%|  99.69%
+-----------------------------------------------
+       avg.|   3.58%|   1.36%|   2.22%|  96.42%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      7074742272 |         6747 |     673.80 |     673.80 |    5.936 |     0.113 | F:\diskspd_test.dat (1GiB)
+     1 |      7072645120 |         6745 |     673.60 |     673.60 |    5.938 |     0.159 | F:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       14147387392 |        13492 |    1347.39 |    1347.39 |    5.937 |     0.138
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      7074742272 |         6747 |     673.80 |     673.80 |    5.936 |     0.113 | F:\diskspd_test.dat (1GiB)
+     1 |      7072645120 |         6745 |     673.60 |     673.60 |    5.938 |     0.159 | F:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       14147387392 |        13492 |    1347.39 |    1347.39 |    5.937 |     0.138
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | F:\diskspd_test.dat (1GiB)
+     1 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | F:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      2.922 |        N/A |      2.922
+   25th |      5.897 |        N/A |      5.897
+   50th |      5.914 |        N/A |      5.914
+   75th |      5.978 |        N/A |      5.978
+   90th |      6.038 |        N/A |      6.038
+   95th |      6.063 |        N/A |      6.063
+   99th |      6.173 |        N/A |      6.173
+3-nines |      7.713 |        N/A |      7.713
+4-nines |      9.206 |        N/A |      9.206
+5-nines |      9.941 |        N/A |      9.941
+6-nines |      9.941 |        N/A |      9.941
+7-nines |      9.941 |        N/A |      9.941
+8-nines |      9.941 |        N/A |      9.941
+9-nines |      9.941 |        N/A |      9.941
+    max |      9.941 |        N/A |      9.941
+=== 16GB OPTANE E: ===                                                             
+--- T1 ---                                                                          
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -r -b4k -t1 -o1 -L -h E:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'E:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 4KiB
+		using random I/O (alignment: 4KiB)
+		number of outstanding I/O operations per thread: 1
+		threads per file: 1
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:27:42 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.00s
+thread count:		1
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0|  39.94%|   2.65%|  37.29%|  60.06%
+    0|    1|  11.23%|   2.81%|   8.42%|  88.77%
+    1|    2|   8.58%|   2.34%|   6.24%|  91.42%
+    1|    3|   2.81%|   0.94%|   1.87%|  97.19%
+    2|    4|   9.98%|   0.31%|   9.67%|  90.02%
+    2|    5|   2.65%|   0.78%|   1.87%|  97.35%
+    3|    6|  10.61%|   8.74%|   1.87%|  89.39%
+    3|    7|   0.94%|   0.31%|   0.62%|  99.06%
+    4|    8|   3.28%|   0.78%|   2.50%|  96.72%
+    4|    9|   3.43%|   0.62%|   2.81%|  96.57%
+    5|   10|   2.96%|   2.03%|   0.94%|  97.04%
+    5|   11|   2.34%|   0.78%|   1.56%|  97.66%
+    6|   12|   0.78%|   0.31%|   0.47%|  99.22%
+    6|   13|   0.78%|   0.16%|   0.62%|  99.22%
+    7|   14|   1.40%|   0.16%|   1.25%|  98.60%
+    7|   15|   0.62%|   0.00%|   0.62%|  99.38%
+-----------------------------------------------
+       avg.|   6.40%|   1.48%|   4.91%|  93.60%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      1964060672 |       479507 |     187.27 |   47940.08 |    0.021 |     0.031 | E:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        1964060672 |       479507 |     187.27 |   47940.08 |    0.021 |     0.031
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      1964060672 |       479507 |     187.27 |   47940.08 |    0.021 |     0.031 | E:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        1964060672 |       479507 |     187.27 |   47940.08 |    0.021 |     0.031
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | E:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      0.017 |        N/A |      0.017
+   25th |      0.019 |        N/A |      0.019
+   50th |      0.019 |        N/A |      0.019
+   75th |      0.019 |        N/A |      0.019
+   90th |      0.028 |        N/A |      0.028
+   95th |      0.034 |        N/A |      0.034
+   99th |      0.038 |        N/A |      0.038
+3-nines |      0.082 |        N/A |      0.082
+4-nines |      0.481 |        N/A |      0.481
+5-nines |      2.740 |        N/A |      2.740
+6-nines |     17.912 |        N/A |     17.912
+7-nines |     17.912 |        N/A |     17.912
+8-nines |     17.912 |        N/A |     17.912
+9-nines |     17.912 |        N/A |     17.912
+    max |     17.912 |        N/A |     17.912
+--- T2 ---                                                                          
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -r -b4k -t4 -o32 -L -h E:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'E:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 4KiB
+		using random I/O (alignment: 4KiB)
+		number of outstanding I/O operations per thread: 32
+		threads per file: 4
+		using I/O Completion Ports
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:27:57 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.01s
+thread count:		4
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0|  69.27%|   3.59%|  65.68%|  30.73%
+    0|    1|  68.02%|   4.68%|  63.34%|  31.98%
+    1|    2|  67.86%|   5.15%|  62.71%|  32.14%
+    1|    3|  75.51%|   5.62%|  69.89%|  24.49%
+    2|    4|  28.08%|   1.25%|  26.83%|  71.92%
+    2|    5|  37.29%|   1.87%|  35.41%|  62.71%
+    3|    6|  11.86%|   9.20%|   2.65%|  88.14%
+    3|    7|   2.96%|   1.56%|   1.40%|  97.04%
+    4|    8|   5.30%|   2.65%|   2.65%|  94.70%
+    4|    9|   2.96%|   0.94%|   2.03%|  97.04%
+    5|   10|   4.99%|   2.65%|   2.34%|  95.01%
+    5|   11|   5.93%|   3.12%|   2.81%|  94.07%
+    6|   12|   0.94%|   0.16%|   0.78%|  99.06%
+    6|   13|   0.16%|   0.00%|   0.16%|  99.84%
+    7|   14|   1.25%|   0.16%|   1.09%|  98.75%
+    7|   15|   1.72%|   1.09%|   0.62%|  98.28%
+-----------------------------------------------
+       avg.|  24.01%|   2.73%|  21.28%|  75.99%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      2294398976 |       560156 |     218.55 |   55948.99 |    0.556 |     0.150 | E:\diskspd_test.dat (1GiB)
+     1 |      2299785216 |       561471 |     219.06 |   56080.33 |    0.557 |     0.193 | E:\diskspd_test.dat (1GiB)
+     2 |      2286276608 |       558173 |     217.78 |   55750.93 |    0.553 |     0.190 | E:\diskspd_test.dat (1GiB)
+     3 |      2295554048 |       560438 |     218.66 |   55977.16 |    0.551 |     0.173 | E:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        9176014848 |      2240238 |     874.05 |  223757.41 |    0.554 |     0.178
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      2294398976 |       560156 |     218.55 |   55948.99 |    0.556 |     0.150 | E:\diskspd_test.dat (1GiB)
+     1 |      2299785216 |       561471 |     219.06 |   56080.33 |    0.557 |     0.193 | E:\diskspd_test.dat (1GiB)
+     2 |      2286276608 |       558173 |     217.78 |   55750.93 |    0.553 |     0.190 | E:\diskspd_test.dat (1GiB)
+     3 |      2295554048 |       560438 |     218.66 |   55977.16 |    0.551 |     0.173 | E:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        9176014848 |      2240238 |     874.05 |  223757.41 |    0.554 |     0.178
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | E:\diskspd_test.dat (1GiB)
+     1 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | E:\diskspd_test.dat (1GiB)
+     2 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | E:\diskspd_test.dat (1GiB)
+     3 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | E:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      0.019 |        N/A |      0.019
+   25th |      0.543 |        N/A |      0.543
+   50th |      0.551 |        N/A |      0.551
+   75th |      0.570 |        N/A |      0.570
+   90th |      0.643 |        N/A |      0.643
+   95th |      0.665 |        N/A |      0.665
+   99th |      1.051 |        N/A |      1.051
+3-nines |      2.574 |        N/A |      2.574
+4-nines |      5.166 |        N/A |      5.166
+5-nines |     17.227 |        N/A |     17.227
+6-nines |     17.396 |        N/A |     17.396
+7-nines |     17.413 |        N/A |     17.413
+8-nines |     17.413 |        N/A |     17.413
+9-nines |     17.413 |        N/A |     17.413
+    max |     17.413 |        N/A |     17.413
+--- T3 ---                                                                          
+WARNING: target access pattern will not be sequential, consider -si
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -b1M -t2 -o4 -L -h E:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'E:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 1MiB
+		using sequential I/O (stride: 1MiB)
+		number of outstanding I/O operations per thread: 4
+		threads per file: 2
+		using I/O Completion Ports
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:28:13 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.01s
+thread count:		2
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0|   5.46%|   0.94%|   4.52%|  94.54%
+    0|    1|   4.84%|   0.78%|   4.06%|  95.16%
+    1|    2|  11.54%|   3.28%|   8.27%|  88.46%
+    1|    3|   7.18%|   2.96%|   4.21%|  92.82%
+    2|    4|   9.36%|   1.25%|   8.11%|  90.64%
+    2|    5|  11.39%|   1.40%|   9.98%|  88.61%
+    3|    6|  12.01%|   4.21%|   7.80%|  87.99%
+    3|    7|   9.98%|   1.72%|   8.27%|  90.02%
+    4|    8|   6.24%|   1.87%|   4.37%|  93.76%
+    4|    9|   6.71%|   1.09%|   5.62%|  93.29%
+    5|   10|   7.33%|   1.09%|   6.24%|  92.67%
+    5|   11|   9.98%|   5.15%|   4.84%|  90.02%
+    6|   12|   1.72%|   0.31%|   1.40%|  98.28%
+    6|   13|   1.25%|   0.31%|   0.94%|  98.75%
+    7|   14|   2.34%|   0.31%|   2.03%|  97.66%
+    7|   15|   0.94%|   0.16%|   0.78%|  99.06%
+-----------------------------------------------
+       avg.|   6.77%|   1.68%|   5.09%|  93.23%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      4637851648 |         4423 |     441.87 |     441.87 |    9.051 |     0.118 | E:\diskspd_test.dat (1GiB)
+     1 |      4638900224 |         4424 |     441.97 |     441.97 |    9.051 |     0.184 | E:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        9276751872 |         8847 |     883.83 |     883.83 |    9.051 |     0.155
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      4637851648 |         4423 |     441.87 |     441.87 |    9.051 |     0.118 | E:\diskspd_test.dat (1GiB)
+     1 |      4638900224 |         4424 |     441.97 |     441.97 |    9.051 |     0.184 | E:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        9276751872 |         8847 |     883.83 |     883.83 |    9.051 |     0.155
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | E:\diskspd_test.dat (1GiB)
+     1 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | E:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      4.658 |        N/A |      4.658
+   25th |      8.972 |        N/A |      8.972
+   50th |      9.050 |        N/A |      9.050
+   75th |      9.087 |        N/A |      9.087
+   90th |      9.173 |        N/A |      9.173
+   95th |      9.237 |        N/A |      9.237
+   99th |      9.363 |        N/A |      9.363
+3-nines |     10.547 |        N/A |     10.547
+4-nines |     13.582 |        N/A |     13.582
+5-nines |     13.582 |        N/A |     13.582
+6-nines |     13.582 |        N/A |     13.582
+7-nines |     13.582 |        N/A |     13.582
+8-nines |     13.582 |        N/A |     13.582
+9-nines |     13.582 |        N/A |     13.582
+    max |     13.582 |        N/A |     13.582
+=== C: SYSTEM NVMe ===                                                             
+--- T1 ---                                                                          
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -r -b4k -t1 -o1 -L -h C:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'C:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 4KiB
+		using random I/O (alignment: 4KiB)
+		number of outstanding I/O operations per thread: 1
+		threads per file: 1
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:28:28 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.01s
+thread count:		1
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0|  38.12%|   2.03%|  36.09%|  61.88%
+    0|    1|  14.06%|   2.50%|  11.56%|  85.94%
+    1|    2|   5.16%|   0.94%|   4.22%|  94.84%
+    1|    3|   6.41%|   1.56%|   4.84%|  93.59%
+    2|    4|   1.41%|   0.62%|   0.78%|  98.59%
+    2|    5|   1.41%|   0.62%|   0.78%|  98.59%
+    3|    6|   4.06%|   3.44%|   0.62%|  95.94%
+    3|    7|   1.09%|   0.16%|   0.94%|  98.91%
+    4|    8|   2.50%|   1.25%|   1.25%|  97.50%
+    4|    9|   2.19%|   0.78%|   1.41%|  97.81%
+    5|   10|   1.41%|   0.47%|   0.94%|  98.59%
+    5|   11|   7.50%|   5.94%|   1.56%|  92.50%
+    6|   12|   0.94%|   0.16%|   0.78%|  99.06%
+    6|   13|   0.31%|   0.16%|   0.16%|  99.69%
+    7|   14|   1.72%|   0.62%|   1.09%|  98.28%
+    7|   15|   0.47%|   0.47%|   0.00%|  99.53%
+-----------------------------------------------
+       avg.|   5.55%|   1.36%|   4.19%|  94.45%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      1436504064 |       350709 |     136.91 |   35049.03 |    0.028 |     0.022 | C:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        1436504064 |       350709 |     136.91 |   35049.03 |    0.028 |     0.022
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      1436504064 |       350709 |     136.91 |   35049.03 |    0.028 |     0.022 | C:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        1436504064 |       350709 |     136.91 |   35049.03 |    0.028 |     0.022
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | C:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      0.021 |        N/A |      0.021
+   25th |      0.027 |        N/A |      0.027
+   50th |      0.028 |        N/A |      0.028
+   75th |      0.028 |        N/A |      0.028
+   90th |      0.029 |        N/A |      0.029
+   95th |      0.032 |        N/A |      0.032
+   99th |      0.037 |        N/A |      0.037
+3-nines |      0.091 |        N/A |      0.091
+4-nines |      0.467 |        N/A |      0.467
+5-nines |      3.319 |        N/A |      3.319
+6-nines |      6.183 |        N/A |      6.183
+7-nines |      6.183 |        N/A |      6.183
+8-nines |      6.183 |        N/A |      6.183
+9-nines |      6.183 |        N/A |      6.183
+    max |      6.183 |        N/A |      6.183
+--- T2 ---                                                                          
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -r -b4k -t4 -o32 -L -h C:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'C:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 4KiB
+		using random I/O (alignment: 4KiB)
+		number of outstanding I/O operations per thread: 32
+		threads per file: 4
+		using I/O Completion Ports
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:28:43 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.01s
+thread count:		4
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0| 100.00%|   3.28%|  96.72%|   0.00%
+    0|    1| 100.00%|   1.56%|  98.44%|   0.00%
+    1|    2| 100.00%|   2.03%|  97.97%|   0.00%
+    1|    3| 100.00%|   2.66%|  97.34%|   0.00%
+    2|    4|   4.53%|   1.41%|   3.12%|  95.47%
+    2|    5|   5.94%|   3.59%|   2.34%|  94.06%
+    3|    6|  12.19%|   3.75%|   8.44%|  87.81%
+    3|    7|   8.28%|   2.50%|   5.78%|  91.72%
+    4|    8|   4.84%|   1.72%|   3.12%|  95.16%
+    4|    9|   4.06%|   1.88%|   2.19%|  95.94%
+    5|   10|   5.47%|   3.28%|   2.19%|  94.53%
+    5|   11|  15.31%|  10.62%|   4.69%|  84.69%
+    6|   12|   0.62%|   0.16%|   0.47%|  99.38%
+    6|   13|   1.41%|   0.78%|   0.62%|  98.59%
+    7|   14|   1.88%|   0.31%|   1.56%|  98.12%
+    7|   15|   1.72%|   0.62%|   1.09%|  98.28%
+-----------------------------------------------
+       avg.|  29.14%|   2.51%|  26.63%|  70.86%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      3475918848 |       848613 |     331.27 |   84805.30 |    0.064 |     0.020 | C:\diskspd_test.dat (1GiB)
+     1 |      3014111232 |       735867 |     287.26 |   73538.14 |    0.065 |     0.024 | C:\diskspd_test.dat (1GiB)
+     2 |      2999640064 |       732334 |     285.88 |   73185.07 |    0.066 |     0.019 | C:\diskspd_test.dat (1GiB)
+     3 |      3028049920 |       739270 |     288.59 |   73878.21 |    0.066 |     0.016 | C:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       12517720064 |      3056084 |    1192.99 |  305406.72 |    0.065 |     0.020
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      3475918848 |       848613 |     331.27 |   84805.30 |    0.064 |     0.020 | C:\diskspd_test.dat (1GiB)
+     1 |      3014111232 |       735867 |     287.26 |   73538.14 |    0.065 |     0.024 | C:\diskspd_test.dat (1GiB)
+     2 |      2999640064 |       732334 |     285.88 |   73185.07 |    0.066 |     0.019 | C:\diskspd_test.dat (1GiB)
+     3 |      3028049920 |       739270 |     288.59 |   73878.21 |    0.066 |     0.016 | C:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       12517720064 |      3056084 |    1192.99 |  305406.72 |    0.065 |     0.020
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | C:\diskspd_test.dat (1GiB)
+     1 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | C:\diskspd_test.dat (1GiB)
+     2 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | C:\diskspd_test.dat (1GiB)
+     3 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | C:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      0.028 |        N/A |      0.028
+   25th |      0.058 |        N/A |      0.058
+   50th |      0.064 |        N/A |      0.064
+   75th |      0.071 |        N/A |      0.071
+   90th |      0.080 |        N/A |      0.080
+   95th |      0.086 |        N/A |      0.086
+   99th |      0.093 |        N/A |      0.093
+3-nines |      0.177 |        N/A |      0.177
+4-nines |      0.684 |        N/A |      0.684
+5-nines |      1.366 |        N/A |      1.366
+6-nines |      7.150 |        N/A |      7.150
+7-nines |      7.185 |        N/A |      7.185
+8-nines |      7.185 |        N/A |      7.185
+9-nines |      7.185 |        N/A |      7.185
+    max |      7.185 |        N/A |      7.185
+--- T3 ---                                                                          
+WARNING: target access pattern will not be sequential, consider -si
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -b1M -t2 -o4 -L -h C:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'C:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 1MiB
+		using sequential I/O (stride: 1MiB)
+		number of outstanding I/O operations per thread: 4
+		threads per file: 2
+		using I/O Completion Ports
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:28:58 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.01s
+thread count:		2
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0|   8.44%|   0.94%|   7.50%|  91.56%
+    0|    1|  12.66%|   1.56%|  11.09%|  87.34%
+    1|    2|   7.50%|   3.12%|   4.38%|  92.50%
+    1|    3|   4.06%|   1.56%|   2.50%|  95.94%
+    2|    4|   2.66%|   1.41%|   1.25%|  97.34%
+    2|    5|   2.03%|   1.72%|   0.31%|  97.97%
+    3|    6|   4.84%|   2.50%|   2.34%|  95.16%
+    3|    7|   1.25%|   0.31%|   0.94%|  98.75%
+    4|    8|   3.59%|   1.72%|   1.88%|  96.41%
+    4|    9|   3.12%|   1.25%|   1.88%|  96.88%
+    5|   10|   3.91%|   2.19%|   1.72%|  96.09%
+    5|   11|  10.31%|   8.44%|   1.88%|  89.69%
+    6|   12|   0.47%|   0.00%|   0.47%|  99.53%
+    6|   13|   0.94%|   0.31%|   0.62%|  99.06%
+    7|   14|   1.09%|   0.47%|   0.62%|  98.91%
+    7|   15|   1.72%|   0.16%|   1.56%|  98.28%
+-----------------------------------------------
+       avg.|   4.29%|   1.73%|   2.56%|  95.71%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |     17264803840 |        16465 |    1644.92 |    1644.92 |    2.431 |     0.380 | C:\diskspd_test.dat (1GiB)
+     1 |     17215520768 |        16418 |    1640.22 |    1640.22 |    2.438 |     0.390 | C:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       34480324608 |        32883 |    3285.14 |    3285.14 |    2.434 |     0.385
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |     17264803840 |        16465 |    1644.92 |    1644.92 |    2.431 |     0.380 | C:\diskspd_test.dat (1GiB)
+     1 |     17215520768 |        16418 |    1640.22 |    1640.22 |    2.438 |     0.390 | C:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       34480324608 |        32883 |    3285.14 |    3285.14 |    2.434 |     0.385
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | C:\diskspd_test.dat (1GiB)
+     1 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | C:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      0.438 |        N/A |      0.438
+   25th |      2.431 |        N/A |      2.431
+   50th |      2.432 |        N/A |      2.432
+   75th |      2.433 |        N/A |      2.433
+   90th |      2.438 |        N/A |      2.438
+   95th |      2.473 |        N/A |      2.473
+   99th |      2.839 |        N/A |      2.839
+3-nines |      6.067 |        N/A |      6.067
+4-nines |     19.293 |        N/A |     19.293
+5-nines |     21.400 |        N/A |     21.400
+6-nines |     21.400 |        N/A |     21.400
+7-nines |     21.400 |        N/A |     21.400
+8-nines |     21.400 |        N/A |     21.400
+9-nines |     21.400 |        N/A |     21.400
+    max |     21.400 |        N/A |     21.400
+=== D: SECOND NVMe ===                                                             
+--- T1 ---                                                                          
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -r -b4k -t1 -o1 -L -h D:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'D:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 4KiB
+		using random I/O (alignment: 4KiB)
+		number of outstanding I/O operations per thread: 1
+		threads per file: 1
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:29:13 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.01s
+thread count:		1
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0|  49.77%|   4.06%|  45.71%|  50.23%
+    0|    1|  14.82%|   3.74%|  11.08%|  85.18%
+    1|    2|   7.80%|   3.90%|   3.90%|  92.20%
+    1|    3|   2.18%|   1.40%|   0.78%|  97.82%
+    2|    4|   3.12%|   1.25%|   1.87%|  96.88%
+    2|    5|   2.18%|   1.25%|   0.94%|  97.82%
+    3|    6|   4.84%|   3.43%|   1.40%|  95.16%
+    3|    7|   2.03%|   1.56%|   0.47%|  97.97%
+    4|    8|   2.03%|   0.94%|   1.09%|  97.97%
+    4|    9|   2.18%|   1.09%|   1.09%|  97.82%
+    5|   10|   3.12%|   1.25%|   1.87%|  96.88%
+    5|   11|   9.52%|   6.08%|   3.43%|  90.48%
+    6|   12|   0.78%|   0.47%|   0.31%|  99.22%
+    6|   13|   1.40%|   0.62%|   0.78%|  98.60%
+    7|   14|   1.40%|   0.47%|   0.94%|  98.60%
+    7|   15|   0.78%|   0.31%|   0.47%|  99.22%
+-----------------------------------------------
+       avg.|   6.75%|   1.99%|   4.76%|  93.25%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      1889779712 |       461372 |     180.01 |   46083.76 |    0.022 |     0.025 | D:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        1889779712 |       461372 |     180.01 |   46083.76 |    0.022 |     0.025
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      1889779712 |       461372 |     180.01 |   46083.76 |    0.022 |     0.025 | D:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:        1889779712 |       461372 |     180.01 |   46083.76 |    0.022 |     0.025
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | D:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      0.016 |        N/A |      0.016
+   25th |      0.018 |        N/A |      0.018
+   50th |      0.019 |        N/A |      0.019
+   75th |      0.019 |        N/A |      0.019
+   90th |      0.033 |        N/A |      0.033
+   95th |      0.035 |        N/A |      0.035
+   99th |      0.038 |        N/A |      0.038
+3-nines |      0.097 |        N/A |      0.097
+4-nines |      0.586 |        N/A |      0.586
+5-nines |      2.237 |        N/A |      2.237
+6-nines |     11.439 |        N/A |     11.439
+7-nines |     11.439 |        N/A |     11.439
+8-nines |     11.439 |        N/A |     11.439
+9-nines |     11.439 |        N/A |     11.439
+    max |     11.439 |        N/A |     11.439
+--- T2 ---                                                                          
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -r -b4k -t4 -o32 -L -h D:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'D:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 4KiB
+		using random I/O (alignment: 4KiB)
+		number of outstanding I/O operations per thread: 32
+		threads per file: 4
+		using I/O Completion Ports
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:29:28 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.01s
+thread count:		4
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0| 100.00%|   2.81%|  97.19%|   0.00%
+    0|    1| 100.00%|   1.56%|  98.44%|   0.00%
+    1|    2| 100.00%|   1.72%|  98.28%|   0.00%
+    1|    3| 100.00%|   3.12%|  96.88%|   0.00%
+    2|    4|   3.59%|   1.72%|   1.87%|  96.41%
+    2|    5|   3.59%|   1.72%|   1.87%|  96.41%
+    3|    6|   7.64%|   3.43%|   4.21%|  92.36%
+    3|    7|  11.39%|   3.28%|   8.11%|  88.61%
+    4|    8|   4.84%|   1.87%|   2.96%|  95.16%
+    4|    9|   6.86%|   3.43%|   3.43%|  93.14%
+    5|   10|   7.18%|   2.96%|   4.21%|  92.82%
+    5|   11|  13.57%|  10.92%|   2.65%|  86.43%
+    6|   12|   1.87%|   0.78%|   1.09%|  98.13%
+    6|   13|   1.56%|   0.47%|   1.09%|  98.44%
+    7|   14|   2.03%|   0.94%|   1.09%|  97.97%
+    7|   15|   2.34%|   0.31%|   2.03%|  97.66%
+-----------------------------------------------
+       avg.|  29.15%|   2.56%|  26.59%|  70.85%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      3367669760 |       822185 |     320.99 |   82174.04 |    0.044 |     0.056 | D:\diskspd_test.dat (1GiB)
+     1 |      3381473280 |       825555 |     322.31 |   82510.86 |    0.044 |     0.050 | D:\diskspd_test.dat (1GiB)
+     2 |      3266433024 |       797469 |     311.34 |   79703.78 |    0.045 |     0.055 | D:\diskspd_test.dat (1GiB)
+     3 |      3325218816 |       811821 |     316.95 |   81138.20 |    0.045 |     0.055 | D:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       13340794880 |      3257030 |    1271.59 |  325526.87 |    0.045 |     0.054
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |      3367669760 |       822185 |     320.99 |   82174.04 |    0.044 |     0.056 | D:\diskspd_test.dat (1GiB)
+     1 |      3381473280 |       825555 |     322.31 |   82510.86 |    0.044 |     0.050 | D:\diskspd_test.dat (1GiB)
+     2 |      3266433024 |       797469 |     311.34 |   79703.78 |    0.045 |     0.055 | D:\diskspd_test.dat (1GiB)
+     3 |      3325218816 |       811821 |     316.95 |   81138.20 |    0.045 |     0.055 | D:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       13340794880 |      3257030 |    1271.59 |  325526.87 |    0.045 |     0.054
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | D:\diskspd_test.dat (1GiB)
+     1 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | D:\diskspd_test.dat (1GiB)
+     2 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | D:\diskspd_test.dat (1GiB)
+     3 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | D:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      0.020 |        N/A |      0.020
+   25th |      0.039 |        N/A |      0.039
+   50th |      0.044 |        N/A |      0.044
+   75th |      0.050 |        N/A |      0.050
+   90th |      0.054 |        N/A |      0.054
+   95th |      0.060 |        N/A |      0.060
+   99th |      0.070 |        N/A |      0.070
+3-nines |      0.104 |        N/A |      0.104
+4-nines |      2.032 |        N/A |      2.032
+5-nines |      7.841 |        N/A |      7.841
+6-nines |      9.710 |        N/A |      9.710
+7-nines |      9.749 |        N/A |      9.749
+8-nines |      9.749 |        N/A |      9.749
+9-nines |      9.749 |        N/A |      9.749
+    max |      9.749 |        N/A |      9.749
+--- T3 ---                                                                          
+WARNING: target access pattern will not be sequential, consider -si
+
+Command Line: C:\Files\diskspd\amd64\diskspd.exe -c1G -d10 -w0 -b1M -t2 -o4 -L -h D:\diskspd_test.dat
+
+Input parameters:
+
+	timespan:   1
+	-------------
+	duration: 10s
+	warm up time: 5s
+	cool down time: 0s
+	measuring latency
+	random seed: 0
+	path: 'D:\diskspd_test.dat'
+		think time: 0ms
+		burst size: 0
+		software cache disabled
+		hardware write cache disabled, writethrough on
+		performing read test
+		block size: 1MiB
+		using sequential I/O (stride: 1MiB)
+		number of outstanding I/O operations per thread: 4
+		threads per file: 2
+		using I/O Completion Ports
+		IO priority: normal
+
+System information:
+
+	computer name: Beast
+	start time: 2026/05/12 16:29:43 UTC
+
+	cpu count:		16
+	core count:		8
+	group count:		1
+	node count:		1
+	socket count:		1
+	heterogeneous cores:	n
+
+	active power scheme:	High performance (8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c)
+
+Results for timespan 1:
+*******************************************************************************
+
+actual test time:	10.01s
+thread count:		2
+
+Core | CPU |  Usage |  User  | Kernel |  Idle
+-----------------------------------------------
+    0|    0|   9.05%|   1.56%|   7.49%|  90.95%
+    0|    1|  15.76%|   2.18%|  13.57%|  84.24%
+    1|    2|   6.40%|   2.65%|   3.74%|  93.60%
+    1|    3|   2.81%|   0.78%|   2.03%|  97.19%
+    2|    4|   2.96%|   1.25%|   1.72%|  97.04%
+    2|    5|   0.94%|   0.31%|   0.62%|  99.06%
+    3|    6|   3.74%|   2.65%|   1.09%|  96.26%
+    3|    7|   2.18%|   0.94%|   1.25%|  97.82%
+    4|    8|   1.87%|   1.09%|   0.78%|  98.13%
+    4|    9|   3.43%|   1.40%|   2.03%|  96.57%
+    5|   10|   2.34%|   1.09%|   1.25%|  97.66%
+    5|   11|   7.96%|   6.71%|   1.25%|  92.04%
+    6|   12|   0.31%|   0.00%|   0.31%|  99.69%
+    6|   13|   0.78%|   0.16%|   0.62%|  99.22%
+    7|   14|   1.09%|   0.16%|   0.94%|  98.91%
+    7|   15|   0.94%|   0.16%|   0.78%|  99.06%
+-----------------------------------------------
+       avg.|   3.91%|   1.44%|   2.47%|  96.09%
+
+Total IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |     17725128704 |        16904 |    1688.36 |    1688.36 |    2.368 |     0.209 | D:\diskspd_test.dat (1GiB)
+     1 |     17589862400 |        16775 |    1675.48 |    1675.48 |    2.387 |     0.440 | D:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       35314991104 |        33679 |    3363.84 |    3363.84 |    2.377 |     0.344
+
+Read IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |     17725128704 |        16904 |    1688.36 |    1688.36 |    2.368 |     0.209 | D:\diskspd_test.dat (1GiB)
+     1 |     17589862400 |        16775 |    1675.48 |    1675.48 |    2.387 |     0.440 | D:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:       35314991104 |        33679 |    3363.84 |    3363.84 |    2.377 |     0.344
+
+Write IO
+thread |       bytes     |     I/Os     |    MiB/s   |  I/O per s |  AvgLat  | LatStdDev |  file
+-----------------------------------------------------------------------------------------------------
+     0 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | D:\diskspd_test.dat (1GiB)
+     1 |               0 |            0 |       0.00 |       0.00 |    0.000 |       N/A | D:\diskspd_test.dat (1GiB)
+-----------------------------------------------------------------------------------------------------
+total:                 0 |            0 |       0.00 |       0.00 |    0.000 |       N/A
+
+Total latency distribution:
+  %-ile |  Read (ms) | Write (ms) | Total (ms)
+----------------------------------------------
+    min |      0.768 |        N/A |      0.768
+   25th |      2.375 |        N/A |      2.375
+   50th |      2.376 |        N/A |      2.376
+   75th |      2.377 |        N/A |      2.377
+   90th |      2.381 |        N/A |      2.381
+   95th |      2.421 |        N/A |      2.421
+   99th |      2.821 |        N/A |      2.821
+3-nines |      4.687 |        N/A |      4.687
+4-nines |     21.198 |        N/A |     21.198
+5-nines |     22.033 |        N/A |     22.033
+6-nines |     22.033 |        N/A |     22.033
+7-nines |     22.033 |        N/A |     22.033
+8-nines |     22.033 |        N/A |     22.033
+9-nines |     22.033 |        N/A |     22.033
+    max |     22.033 |        N/A |     22.033
+=== DONE === 
