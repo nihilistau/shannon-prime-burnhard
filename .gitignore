@@ -6,6 +6,7 @@ build/
 
 build*
 
-# Local-only LM Studio API token (paired clientIdentifier:passkey).
-# Used by the shannon-prime-lmstudio-server MCP. Never committed.
-lmstudio-sp-token.txt
+# Local-only LM Studio credentials used by shannon-prime-lmstudio-server.
+# Never committed.
+lmstudio-sp-token.txt              # REST bearer (sk-lm-...)
+lmstudio-sp-sdk-passkey.txt        # SDK WS pair (clientIdentifier:passkey)

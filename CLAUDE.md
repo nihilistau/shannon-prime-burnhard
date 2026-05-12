@@ -77,14 +77,31 @@ LM Studio has **TWO independent local auth systems**:
 
 2. **SDK WebSocket pairing** — separate `clientIdentifier +
    clientPasskey` pair, stored as SHA-512 hashes in
-   `~/.cache/lm-studio/.internal/permissions-store.json`. Created
-   interactively when an SDK app first connects (GUI shows
-   "Allow API access?" dialog). REQUIRED for SDK-exposed features:
-   **speculative decode (`draftModel`), model load/unload via SDK**.
+   `~/.cache/lm-studio/.internal/permissions-store.json`. REQUIRED
+   for SDK-exposed features: model lifecycle via SDK,
+   `lmstudio_chat` / `_stream_chat` / `_spec_chat`. The SDK 1.5.0
+   exposes no constructor knob for the pair — random UUIDs by
+   default — so we monkey-patch `ClientBase._create_auth_message`
+   to send the values we wrote.
 
-   On this box: 13 paired clients exist (SILLYTAVERN, Beast, claude,
-   cosysim2, etc.) but the lmstudio-server MCP has not been paired
-   yet — must be done with LM Studio GUI running.
+   How the 13 existing entries (SILLYTAVERN, Beast, claude, cosysim2,
+   ...) got there: they were paired BEFORE `tokenMode` was flipped to
+   `"required"`. Once present, they persist as hash entries forever.
+   There is NO "Allow API access?" dialog with `tokenMode: "required"`
+   — new SDK clients just fail with "Authentication failed" until
+   their pair is in the file.
+
+   The MCP's own pair (label `shannon-prime-mcp`,
+   `clientIdentifier=spmcp01a`) was added 2026-05-13 by
+   `C:\tmp\sdk_pair.py`:
+     - generates a 32-byte random passkey,
+     - writes `clientPasskeySHA512Base64` into permissions-store.json
+       alongside the existing entries (no daemon restart needed —
+       LM Studio re-reads on each WS auth attempt),
+     - saves the cleartext as `<repo>/lmstudio-sp-sdk-passkey.txt`
+       in `clientIdentifier:passkey` form, gitignored.
+   The MCP reads that file at startup; if missing, SDK calls fail
+   loudly and REST calls remain unaffected.
 
 3. **Model loading guardrails** at
    `~/.cache/lm-studio/settings.json -> modelLoadingGuardrails`
@@ -101,7 +118,17 @@ LM Studio has **TWO independent local auth systems**:
 - SPflash drafts visible in `lms ls`:
   `qwen3.6-35b-a3b-draft@q4_k_m` (291 MB, arch `dflash-draft`)
   `qwen3.6-35b-a3b-draft@q8_0`   (515 MB)
-  Both ready to use as soon as the SDK pairing is done.
+- Live SDK call WITH the draft returns a clear server-side error:
+  > `Failed to load draft model. Speculative decoding is not supported
+  >  for multimodal models in llama.cpp server`
+  Qwen3.6-A3B is loaded with vision (mmproj-...-BF16.gguf), and
+  llama.cpp upstream doesn't yet support VLM + spec at the same time.
+  No REST load-time toggle exists to disable vision (we probed
+  `mmproj`, `disable_vision`, `text_only`, `load_mmproj`,
+  `enable_mmproj`, `mmproj_path`, `vision` — all 400'd).
+- **Path forward**: when llama.cpp adds VLM+spec, or when the model is
+  loaded without mmproj via the LM Studio UI's model load config,
+  spec decode flips on for free — our infra is ready.
 
 ### The MCP tool surface
 
