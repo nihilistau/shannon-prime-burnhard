@@ -47,12 +47,13 @@ target_include_directories(sp_beast_canyon
 
 # Platform flags
 if(MSVC)
-    target_compile_options(sp_beast_canyon PRIVATE /arch:AVX512 /O2)
+    target_compile_options(sp_beast_canyon PRIVATE /arch:AVX512 /O2 /openmp)
 elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(sp_beast_canyon PRIVATE
         -mavx512f -mavx512bw -mavx512dq -mavx512vl -mf16c -mfma
-        -O3 -march=native
+        -O3 -march=native -fopenmp
     )
+    target_link_options(sp_beast_canyon PRIVATE -fopenmp)
 endif()
 
 # Windows-specific: link ws2_32 for sidecar socket

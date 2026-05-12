@@ -474,6 +474,30 @@ int sp_beast_moe_forward(sp_beast_engine_t *engine,
     bool crt_armed = (engine->barrier.n_gpus >= 2 &&
                       engine->shredder_crt.config.use_avx512);
 
+    // Per-MoE-call scratch. Previously we did 3 malloc + 3 free per expert
+    // per token (240 heap ops per token × 40 layers = ~10k mallocs/sec at
+    // 1 tok/s). Now: pre-size once per call from the layer's first expert
+    // and reuse for all top-K experts. The buffers don't escape this fn.
+    int probe_n_ff = 0, probe_in_dim = 0;
+    for (int kk = 0; kk < r->n_selected; kk++) {
+        int eid = r->expert_ids[kk];
+        const sp_optane_expert_t *ex0 = sp_optane_layer_expert(&engine->reservoir, layer, eid);
+        if (ex0 && ex0->gate_proj) {
+            probe_n_ff   = (int)ex0->gate_proj->ne[1];
+            probe_in_dim = (int)ex0->gate_proj->ne[0];
+            break;
+        }
+    }
+    if (probe_n_ff <= 0 || probe_in_dim <= 0) return 0;
+    const size_t ff_floats = (size_t)probe_n_ff;
+    float *gate_buf = (float *)malloc(ff_floats * sizeof(float));
+    float *up_buf   = (float *)malloc(ff_floats * sizeof(float));
+    float *down_out = (float *)malloc(hidden_dim * sizeof(float));
+    if (!gate_buf || !up_buf || !down_out) {
+        free(gate_buf); free(up_buf); free(down_out);
+        return -1;
+    }
+
     // ── Step 2: Per-expert FFN (gate→SiLU·up→down) ──────────────────
     for (int k = 0; k < r->n_selected; k++) {
         int eid = r->expert_ids[k];
@@ -507,15 +531,11 @@ int sp_beast_moe_forward(sp_beast_engine_t *engine,
                                       n_ff, in_dim);
         }
 
-        // Allocate per-expert scratch
-        float *gate_buf = (float *)malloc((size_t)n_ff * sizeof(float));
-        float *up_buf   = (float *)malloc((size_t)n_ff * sizeof(float));
-        float *down_out = (float *)malloc(hidden_dim * sizeof(float));
+        // Per-call scratch (gate_buf / up_buf / down_out) is pre-allocated
+        // above. beast_matvec uses its own per-thread dequant scratch via
+        // alloca inside the OMP region, so the caller-passed `scratch` is
+        // only a placeholder for the single-threaded fallback path.
         float *scratch  = engine->beast_scratch;
-        if (!gate_buf || !up_buf || !down_out) {
-            free(gate_buf); free(up_buf); free(down_out);
-            continue;
-        }
 
         // Gate projection: [n_ff, n_embd] × [n_embd] → [n_ff]
         beast_matvec(exp->gate_proj, hidden_states, gate_buf, scratch,
@@ -536,11 +556,10 @@ int sp_beast_moe_forward(sp_beast_engine_t *engine,
         for (size_t i = 0; i < hidden_dim; i++) {
             output[i] += score * down_out[i];
         }
-
-        free(gate_buf);
-        free(up_buf);
-        free(down_out);
     }
+    free(gate_buf);
+    free(up_buf);
+    free(down_out);
 
     // ── Step 3: CRT dispatch + barrier (telemetry for dual-GPU) ─────
     if (crt_armed) {
@@ -1118,29 +1137,72 @@ static void beast_rms_norm(const float *x, const float *scale,
 }
 
 // Mat-vec: out[n_out] = W[n_out, n_in] @ x[n_in]
-// Dequants one row at a time into scratch, then dot product. The dot
-// product is the per-call hot loop (n_out * n_in mul-adds per matvec
-// — for Qwen3.6 35B-A3B that's 2048 * 512 = ~1M FMAs per gate/up tensor
-// per expert per token). When AVX-512 is available we vectorise the
-// dot to 16 fp32 lanes using FMA; otherwise we fall back to the scalar
-// loop. The dequant_row step is unchanged — it's cache-bound, not the
-// bottleneck the bench profiles flag.
+//
+// Per-row work (dequant + dot) is independent across rows, so the n_out
+// loop is parallelised with OpenMP across all i9 cores. Each thread owns
+// its own dequant scratch buffer (the caller-passed `scratch` is only
+// safe single-threaded — we allocate per-thread scratches on the stack).
+// The dot product uses AVX-512 FMA for 16-lane fp32 throughput.
+//
+// For Qwen3.6 35B-A3B per-token cost was: 24 matvecs/expert × 8 experts ×
+// 40 layers × ~1M FMAs each ≈ 7.7 GFMAs purely sequential CPU. With 8
+// cores doing rows in parallel this drops to ~1 GFMA per core which AVX-512
+// at ~50 GFLOPS/core handles in ~20ms / token.
 #if defined(__AVX512F__) || defined(_MSC_VER)
 #include <immintrin.h>
+#endif
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
+#if defined(_MSC_VER)
+#include <malloc.h>
+#define SP_ALLOCA(bytes) _alloca(bytes)
+#else
+#include <alloca.h>
+#define SP_ALLOCA(bytes) alloca(bytes)
 #endif
 static void beast_matvec(const sp_optane_tensor_t *W,
                          const float *x, float *out, float *scratch,
                          int n_out, int n_in) {
+    (void)scratch;  // per-thread scratch is allocated below
     const uint8_t *w_data = (const uint8_t *)W->ptr;
     size_t rb = beast_row_bytes(W->type, n_in);
 
+#if defined(_OPENMP)
+    #pragma omp parallel
+    {
+        // Per-thread dequant scratch — sized for the largest row we'll see.
+        // Stack-allocated via VLA when supported, otherwise a thread-local
+        // heap buffer reused across iterations.
+        float *t_scratch = (float *)SP_ALLOCA((size_t)n_in * sizeof(float));
+        // MSVC OpenMP 2.0 needs the loop counter declared outside the for.
+        int i;
+        #pragma omp for schedule(static)
+        for (i = 0; i < n_out; i++) {
+            beast_dequant_row(w_data + (size_t)i * rb, t_scratch, W->type, n_in);
+#if defined(__AVX512F__) || defined(_MSC_VER)
+            __m512 acc = _mm512_setzero_ps();
+            int j = 0;
+            for (; j + 16 <= n_in; j += 16) {
+                __m512 a = _mm512_loadu_ps(t_scratch + j);
+                __m512 b = _mm512_loadu_ps(x         + j);
+                acc = _mm512_fmadd_ps(a, b, acc);
+            }
+            float sum = _mm512_reduce_add_ps(acc);
+            for (; j < n_in; ++j) sum += t_scratch[j] * x[j];
+            out[i] = sum;
+#else
+            float sum = 0.0f;
+            for (int j = 0; j < n_in; j++) sum += t_scratch[j] * x[j];
+            out[i] = sum;
+#endif
+        }
+    }
+#else
+    // Single-threaded fallback (uses the caller's scratch).
     for (int i = 0; i < n_out; i++) {
         beast_dequant_row(w_data + (size_t)i * rb, scratch, W->type, n_in);
 #if defined(__AVX512F__) || defined(_MSC_VER)
-        // Vectorised dot product. AVX-512 is available on i9-11900KB
-        // (Beast Canyon target). MSVC under /arch:AVX512 enables the
-        // intrinsics; GCC/Clang need -mavx512f. Fall back to scalar
-        // when the tail isn't 16-aligned.
         __m512 acc = _mm512_setzero_ps();
         int j = 0;
         for (; j + 16 <= n_in; j += 16) {
@@ -1157,6 +1219,7 @@ static void beast_matvec(const sp_optane_tensor_t *W,
         out[i] = sum;
 #endif
     }
+#endif
 }
 
 // mRoPE-aware rotation: only first rope_dim dimensions are rotated.
