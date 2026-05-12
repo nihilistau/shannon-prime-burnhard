@@ -225,6 +225,106 @@ extern "C" cudaError_t sp_beast_gpu_q4k_matvec_launch(
     int n_out, int n_in,
     cudaStream_t stream);
 
+extern "C" cudaError_t sp_beast_gpu_rms_norm_launch(
+    const float *d_x, const float *d_w, float *d_y,
+    int n, float eps, cudaStream_t stream);
+
+extern "C" cudaError_t sp_beast_gpu_add_launch(
+    float *d_y, const float *d_a, int n, cudaStream_t stream);
+
+// ── Persistent named device buffers ──
+//
+// Small fixed-size registry. Used to keep layer-block intermediates
+// (residual stream, normalised activations, qkv buffer, etc.) device-
+// resident so per-call sync is paid once per BLOCK instead of per matvec.
+struct sp_gpu_buf_entry {
+    char     name[64];
+    float   *ptr;
+    int      n_floats;
+};
+#define SP_GPU_BUF_MAX 32
+static sp_gpu_buf_entry g_gpu_bufs[SP_GPU_BUF_MAX] = {};
+static int              g_gpu_buf_count = 0;
+
+float *sp_beast_gpu_buf(sp_beast_gpu_ctx_t *ctx, const char *name,
+                         int n_floats) {
+    if (!ctx || !name || n_floats <= 0) return NULL;
+    for (int i = 0; i < g_gpu_buf_count; ++i) {
+        if (strcmp(g_gpu_bufs[i].name, name) == 0) {
+            if (g_gpu_bufs[i].n_floats >= n_floats) return g_gpu_bufs[i].ptr;
+            cudaFree(g_gpu_bufs[i].ptr);
+            if (cudaMalloc(&g_gpu_bufs[i].ptr,
+                            (size_t)n_floats * sizeof(float)) != cudaSuccess) {
+                g_gpu_bufs[i].ptr = NULL;
+                return NULL;
+            }
+            g_gpu_bufs[i].n_floats = n_floats;
+            return g_gpu_bufs[i].ptr;
+        }
+    }
+    if (g_gpu_buf_count >= SP_GPU_BUF_MAX) {
+        SP_GPU_LOG("buf registry full (%d entries)", g_gpu_buf_count);
+        return NULL;
+    }
+    sp_gpu_buf_entry *e = &g_gpu_bufs[g_gpu_buf_count];
+    snprintf(e->name, sizeof(e->name), "%s", name);
+    if (cudaMalloc(&e->ptr, (size_t)n_floats * sizeof(float))
+        != cudaSuccess) {
+        SP_GPU_LOG("buf '%s': cudaMalloc %d floats failed", name, n_floats);
+        return NULL;
+    }
+    e->n_floats = n_floats;
+    ++g_gpu_buf_count;
+    return e->ptr;
+}
+
+int sp_beast_gpu_upload(sp_beast_gpu_ctx_t *ctx,
+                         float *d_dst, const float *h_src, int n) {
+    if (!ctx || !d_dst || !h_src || n <= 0) return -1;
+    return (cudaMemcpyAsync(d_dst, h_src, (size_t)n * sizeof(float),
+                              cudaMemcpyHostToDevice, ctx->stream)
+            == cudaSuccess) ? 0 : -1;
+}
+
+int sp_beast_gpu_download(sp_beast_gpu_ctx_t *ctx,
+                           float *h_dst, const float *d_src, int n) {
+    if (!ctx || !h_dst || !d_src || n <= 0) return -1;
+    return (cudaMemcpyAsync(h_dst, d_src, (size_t)n * sizeof(float),
+                              cudaMemcpyDeviceToHost, ctx->stream)
+            == cudaSuccess) ? 0 : -1;
+}
+
+int sp_beast_gpu_sync(sp_beast_gpu_ctx_t *ctx) {
+    if (!ctx) return -1;
+    return cudaStreamSynchronize(ctx->stream) == cudaSuccess ? 0 : -1;
+}
+
+int sp_beast_gpu_q4k_matvec_dd(sp_beast_gpu_ctx_t *ctx,
+                                const void *dW_q4k,
+                                const float *d_x, float *d_y,
+                                int n_out, int n_in) {
+    if (!ctx || !dW_q4k || !d_x || !d_y) return -1;
+    cudaError_t rc = sp_beast_gpu_q4k_matvec_launch(
+        dW_q4k, d_x, d_y, n_out, n_in, ctx->stream);
+    return (rc == cudaSuccess) ? 0 : -1;
+}
+
+int sp_beast_gpu_rms_norm(sp_beast_gpu_ctx_t *ctx,
+                           const float *d_x, const float *d_w,
+                           float *d_y, int n, float eps) {
+    if (!ctx || !d_x || !d_w || !d_y || n <= 0) return -1;
+    return (sp_beast_gpu_rms_norm_launch(d_x, d_w, d_y, n, eps,
+                                          ctx->stream)
+            == cudaSuccess) ? 0 : -1;
+}
+
+int sp_beast_gpu_add(sp_beast_gpu_ctx_t *ctx,
+                      float *d_y, const float *d_a, int n) {
+    if (!ctx || !d_y || !d_a || n <= 0) return -1;
+    return (sp_beast_gpu_add_launch(d_y, d_a, n, ctx->stream)
+            == cudaSuccess) ? 0 : -1;
+}
+
 void *sp_beast_gpu_stage_q4k(sp_beast_gpu_ctx_t *ctx,
                               const void *host_q4k_bytes,
                               int n_out, int n_in) {

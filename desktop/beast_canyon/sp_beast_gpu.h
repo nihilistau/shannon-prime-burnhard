@@ -71,6 +71,44 @@ int sp_beast_gpu_q4k_matvec(sp_beast_gpu_ctx_t *ctx,
                              const float *x, float *out,
                              int n_out, int n_in);
 
+// ── Persistent device-side scratch (for full-block GPU execution) ──
+//
+// Allocates / returns a named device float buffer that survives across
+// matvec calls. Used to keep layer-block intermediates (residual stream,
+// normalised activations, QKV buffer, etc.) resident in VRAM so the
+// per-call sync cost is paid once per BLOCK (~36 syncs/token) instead
+// of once per MATVEC (~120 syncs/token).
+//
+// Names are caller-defined string keys; up to 32 buffers tracked.
+// First call with a given (name, n_floats) allocates; subsequent calls
+// return the existing pointer (re-allocating if n_floats grew).
+float *sp_beast_gpu_buf(sp_beast_gpu_ctx_t *ctx, const char *name, int n_floats);
+
+// H2D / D2H against a persistent buffer. Async on the ctx's stream.
+int sp_beast_gpu_upload(sp_beast_gpu_ctx_t *ctx,
+                         float *d_dst, const float *h_src, int n);
+int sp_beast_gpu_download(sp_beast_gpu_ctx_t *ctx,
+                           float *h_dst, const float *d_src, int n);
+
+// Sync the ctx's stream (block until all queued ops complete).
+int sp_beast_gpu_sync(sp_beast_gpu_ctx_t *ctx);
+
+// Run a Q4_K matvec where input AND output stay device-resident.
+// No H2D / D2H — caller already placed d_x and will read d_y later.
+int sp_beast_gpu_q4k_matvec_dd(sp_beast_gpu_ctx_t *ctx,
+                                const void *dW_q4k,
+                                const float *d_x, float *d_y,
+                                int n_out, int n_in);
+
+// Device-side RMS norm: d_y[i] = d_x[i] * weight[i] / sqrt(mean(x^2) + eps).
+int sp_beast_gpu_rms_norm(sp_beast_gpu_ctx_t *ctx,
+                           const float *d_x, const float *d_w,
+                           float *d_y, int n, float eps);
+
+// Device-side residual add: d_y[i] += d_a[i].
+int sp_beast_gpu_add(sp_beast_gpu_ctx_t *ctx,
+                      float *d_y, const float *d_a, int n);
+
 #endif // SP_WITH_CUDA
 
 #ifdef __cplusplus

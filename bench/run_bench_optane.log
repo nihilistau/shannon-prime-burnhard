@@ -1,0 +1,29 @@
+[bench] writing logs to C:\Projects\shannon-prime-burnhard\bench\furnace_20260512-153836
+
+=== baseline_cpu ===
+  wall_time=15.32s  log=baseline_cpu.log
+
+=== desktop_cuda ===
+  wall_time=53.60s  log=desktop_cuda.log
+
+=== furnace_solo ===
+  wall_time=54.13s  log=furnace_solo.log
+
+=== full_pulse ===
+  wall_time=53.35s  log=full_pulse.log
+
+=== crt_split ===
+  wall_time=50.75s  log=crt_split.log
+
+=== SUMMARY ===
+
+Mode         WallSec KvPos TokPerSec GPUs Furnace CRT Sidecar ReservoirMs
+----         ------- ----- --------- ---- ------- --- ------- -----------
+baseline_cpu   15.32    32      2.09    0 off     off n/a                
+desktop_cuda    53.6    32       0.6    0 off     off n/a                
+furnace_solo   54.13    32      0.59    2 ON      off offline 6763.78    
+full_pulse     53.35    32       0.6    2 ON      off offline 6653.05    
+crt_split      50.75    32      0.63    2 ON      ON  offline 6961.89    
+
+
+[bench] summary written to C:\Projects\shannon-prime-burnhard\bench\furnace_20260512-153836\summary.json

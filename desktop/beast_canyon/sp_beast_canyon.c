@@ -455,7 +455,22 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
             if (engine->beast_gpu_ctx) {
                 uint64_t q4k_t0 = sp_time_us();
                 size_t q4k_n = 0, q4k_bytes = 0;
-                const char *q4k_hot_kinds[] = {
+                // FUSION-FIRST: only stage tensors that have a fused GPU
+                // path in the layer code. Otherwise staging just adds slow
+                // per-call sync dispatches with no fusion benefit.
+                //   - SSM input projections (wqkv/wz fused via ssm_input_proj)
+                //   - SSM output projection (currently CPU)
+                // Set SP_BEAST_GPU_STAGE_ALL=1 to opt back into staging
+                // every hot tensor (the original behaviour) for experiments.
+                const int stage_all =
+                    (getenv("SP_BEAST_GPU_STAGE_ALL") &&
+                     getenv("SP_BEAST_GPU_STAGE_ALL")[0] == '1') ? 1 : 0;
+                const char *q4k_hot_kinds_fused_only[] = {
+                    "attn_qkv.weight",  // wqkv in SSM layers
+                    "attn_gate.weight", // wz   in SSM layers
+                    NULL,
+                };
+                const char *q4k_hot_kinds_all[] = {
                     "attn_qkv.weight", "attn_q.weight", "attn_k.weight",
                     "attn_v.weight",   "attn_o.weight", "attn_output.weight",
                     "attn_gate.weight",
@@ -467,6 +482,8 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
                     "ffn_down_shexp.weight",
                     NULL,
                 };
+                const char **q4k_hot_kinds =
+                    stage_all ? q4k_hot_kinds_all : q4k_hot_kinds_fused_only;
                 // LM head first (one big tensor — biggest amortisation).
                 if (q4k_lm && q4k_lm[0] == '1') {
                     sp_optane_tensor_t *lm =
@@ -497,7 +514,13 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
                         }
                     }
                 }
-                // Hot per-layer non-expert weights (Q4_K only).
+                // Hot per-layer non-expert weights (Q4_K only). Also stage
+                // ssm_alpha/ssm_beta (32 rows — below the cuBLAS threshold
+                // but free for the Q4_K kernel, and required for SSM-block
+                // fusion which needs all 4 SSM input projections on GPU).
+                const char *q4k_extra_kinds[] = {
+                    "ssm_alpha.weight", "ssm_beta.weight", NULL,
+                };
                 if (q4k_hot_n > 0) {
                     for (uint32_t i = 0; i < engine->reservoir.tensor_count; i++) {
                         sp_optane_tensor_t *t = &engine->reservoir.tensors[i];
@@ -511,9 +534,15 @@ int sp_beast_init(sp_beast_engine_t *engine, const sp_beast_config_t *cfg) {
                         int hit = 0;
                         for (int k = 0; q4k_hot_kinds[k]; ++k)
                             if (strstr(t->name, q4k_hot_kinds[k])) { hit = 1; break; }
-                        if (!hit) continue;
+                        int small_hit = 0;
+                        for (int k = 0; q4k_extra_kinds[k]; ++k)
+                            if (strstr(t->name, q4k_extra_kinds[k])) { small_hit = 1; break; }
+                        if (!hit && !small_hit) continue;
                         int n_in = (int)t->ne[0], n_out = (int)t->ne[1];
-                        if ((size_t)n_out * (size_t)n_in < 1000000) continue;
+                        // For "extra" tiny tensors skip the size threshold —
+                        // they're cheap to stage and only used in fused calls.
+                        if (!small_hit &&
+                            (size_t)n_out * (size_t)n_in < 1000000) continue;
                         const size_t row_b = (size_t)(n_in / 256) * 144;
                         const size_t total = row_b * (size_t)n_out;
                         void *d_w = sp_beast_gpu_stage_q4k(
@@ -2432,10 +2461,54 @@ static void beast_ssm_layer(sp_beast_engine_t *engine, float *x,
         return;
     }
 
-    beast_matvec(wqkv, xn, qkv_buf, scratch, conv_dim, n_embd);
-    beast_matvec(wz, xn, z_buf, scratch, d_inner, n_embd);
-    beast_matvec(walpha, xn, alpha_raw, scratch, n_v_heads, n_embd);
-    beast_matvec(wbeta, xn, beta_raw, scratch, n_v_heads, n_embd);
+    // ── SSM input projection fusion ──
+    // The 4 input projections (wqkv, wz, walpha, wbeta) all consume the
+    // SAME normalised vector xn and produce independent outputs. When all
+    // four are GPU-staged as Q4_K we can:
+    //   1. Upload xn ONCE
+    //   2. Launch 4 kernels back-to-back on the same stream (no sync between)
+    //   3. Download all 4 outputs in parallel
+    //   4. Sync ONCE
+    // vs the per-matvec path's 4 syncs at ~100 us each = 300 us saved per
+    // SSM layer x 30 layers = 9 ms / token. Falls back to CPU per-matvec
+    // path if any of the 4 isn't staged.
+    int ssm_fused = 0;
+#ifdef SP_WITH_CUDA
+    if (g_beast_gpu &&
+        wqkv->gpu_w_q4k && wz->gpu_w_q4k &&
+        walpha->gpu_w_q4k && wbeta->gpu_w_q4k)
+    {
+        float *d_xn    = sp_beast_gpu_buf(g_beast_gpu, "ssm_xn",    n_embd);
+        float *d_qkv   = sp_beast_gpu_buf(g_beast_gpu, "ssm_qkv",   conv_dim);
+        float *d_z     = sp_beast_gpu_buf(g_beast_gpu, "ssm_z",     d_inner);
+        float *d_alpha = sp_beast_gpu_buf(g_beast_gpu, "ssm_alpha", n_v_heads);
+        float *d_beta  = sp_beast_gpu_buf(g_beast_gpu, "ssm_beta",  n_v_heads);
+        if (d_xn && d_qkv && d_z && d_alpha && d_beta) {
+            int rc = 0;
+            rc |= sp_beast_gpu_upload(g_beast_gpu, d_xn, xn, n_embd);
+            rc |= sp_beast_gpu_q4k_matvec_dd(g_beast_gpu, wqkv->gpu_w_q4k,
+                                              d_xn, d_qkv, conv_dim, n_embd);
+            rc |= sp_beast_gpu_q4k_matvec_dd(g_beast_gpu, wz->gpu_w_q4k,
+                                              d_xn, d_z, d_inner, n_embd);
+            rc |= sp_beast_gpu_q4k_matvec_dd(g_beast_gpu, walpha->gpu_w_q4k,
+                                              d_xn, d_alpha, n_v_heads, n_embd);
+            rc |= sp_beast_gpu_q4k_matvec_dd(g_beast_gpu, wbeta->gpu_w_q4k,
+                                              d_xn, d_beta, n_v_heads, n_embd);
+            rc |= sp_beast_gpu_download(g_beast_gpu, qkv_buf,   d_qkv,   conv_dim);
+            rc |= sp_beast_gpu_download(g_beast_gpu, z_buf,     d_z,     d_inner);
+            rc |= sp_beast_gpu_download(g_beast_gpu, alpha_raw, d_alpha, n_v_heads);
+            rc |= sp_beast_gpu_download(g_beast_gpu, beta_raw,  d_beta,  n_v_heads);
+            rc |= sp_beast_gpu_sync(g_beast_gpu);
+            if (rc == 0) ssm_fused = 1;
+        }
+    }
+#endif
+    if (!ssm_fused) {
+        beast_matvec(wqkv, xn, qkv_buf, scratch, conv_dim, n_embd);
+        beast_matvec(wz, xn, z_buf, scratch, d_inner, n_embd);
+        beast_matvec(walpha, xn, alpha_raw, scratch, n_v_heads, n_embd);
+        beast_matvec(wbeta, xn, beta_raw, scratch, n_v_heads, n_embd);
+    }
 
     // 3. Compute decay gate (alpha) and learning rate (beta)
     snprintf(name, sizeof(name), "blk.%d.ssm_a", l);

@@ -1,0 +1,215 @@
+sp-engine.exe : [sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=1 mobile=0
+At line:1 char:42
++ ... StartNew(); & 'C:\Projects\shannon-prime-burnhard\build_beast\bin\sp- ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([sp-mode] LEGAC...ecar=1 mobile=0:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 12287 MiB):
+  Device 0: NVIDIA GeForce RTX 2060, compute capability 7.5, VMM: yes, VRAM: 12287 MiB
+[sp-engine] GPU 0: NVIDIA GeForce RTX 2060 — 10.95 / 12.00 GiB
+[sp-engine] backend: CUDA0 (GPU)
+[sp-engine:diag] load_backend_offload_: enter             VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] gguf named tensors: 733, sum(ggml_nbytes)=20175.71 MiB
+[sp-engine:diag]   type=14 count=61 bytes=4802.93 MiB
+[sp-engine:diag]   type=0 count=301 bytes=84.74 MiB
+[sp-engine:diag]   type=12 count=371 bytes=15288.05 MiB
+[sp-engine:diag] after mmap_ctx walk                      VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] before ggml_backend_alloc_ctx_tensors    VRAM free=10.95 GiB used=1.05 GiB / total=12.00 GiB
+[sp-engine:diag] backend_buf_size=20175.71 MiB (what ggml allocated on backend)
+[sp-engine:diag] after ggml_backend_alloc_ctx_tensors     VRAM free=0.00 GiB used=12.00 GiB / total=12.00 GiB
+[sp-engine] LlamaWeights: offloaded 733 tensors (20175.71 MiB) to backend
+[sp-engine:diag] after all tensor_set copies              VRAM free=0.00 GiB used=12.00 GiB / total=12.00 GiB
+[sp-engine:diag] after mmap ctx + gguf free               VRAM free=0.00 GiB used=12.00 GiB / total=12.00 GiB
+[sp-engine] mRoPE mode=8 sections=[11,11,10,0] n_rot=64
+[sp-engine] ForwardContext: multi-backend scheduler active (GPU + CPU fallback)
+[sp-engine] n_experts_used override: 8 -> 4 (CLI)
+[sp-engine] Beast top-K override: 4 experts/token
+╔══════════════════════════════════════�
+�═══════╗
+║  SHANNON-PRIME: BEAST CANYON ENGINE          ║
+║  Heterogeneous MoE Orchestrator              ║
+╚══════════════════════════════════════�
+�═══════╝
+[sp-mode] LEGACY  cuda=1 l0_igpu=1 optane=0 sidecar=1 mobile=0
+[BOOT] Stage 1: Mapping Optane reservoir...
+[sp-optane] Mapping reservoir: F:\Qwen3.6-35B-A3B-Q4_K_M.gguf (tier=RAM)
+[sp-optane] Loaded 20186.19 MB in 7032.16 ms (tier=RAM)
+[sp-optane] vocab_size inferred from token_embd.weight: 248320
+[sp-optane] Parsed 733 tensors, 41 KV pairs in 2.37 ms
+[sp-optane] Architecture: qwen35moe, layers=40, heads=16/2, embd=2048
+[sp-optane] Fused down layer=0: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=0: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=0: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=1: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=1: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=1: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=2: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=2: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=2: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=3: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=3: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=3: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=4: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=4: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=4: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=5: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=5: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=5: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=6: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=6: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=6: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=7: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=7: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=7: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=8: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=8: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=8: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=9: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=9: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=9: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=10: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=10: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=10: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=11: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=11: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=11: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=12: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=12: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=12: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=13: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=13: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=13: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=14: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=14: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=14: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=15: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=15: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=15: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=16: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=16: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=16: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=17: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=17: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=17: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=18: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=18: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=18: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=19: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=19: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=19: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=20: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=20: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=20: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=21: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=21: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=21: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=22: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=22: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=22: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=23: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=23: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=23: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=24: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=24: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=24: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=25: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=25: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=25: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=26: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=26: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=26: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=27: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=27: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=27: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=28: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=28: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=28: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=29: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=29: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=29: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=30: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=30: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=30: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=31: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=31: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=31: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=32: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=32: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=32: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=33: 256 experts, 512x2048 per expert (0.56 MB each)
+[sp-optane] Fused gate layer=33: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=33: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=34: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=34: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=34: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=35: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=35: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=35: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=36: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=36: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=36: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=37: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=37: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=37: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=38: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=38: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=38: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused down layer=39: 256 experts, 512x2048 per expert (0.82 MB each)
+[sp-optane] Fused gate layer=39: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] Fused up layer=39: 256 experts, 2048x512 per expert (0.56 MB each)
+[sp-optane] MoE: 256 experts (top-8), index built in 9.81 ms
+[sp-optane] === RESERVOIR ONLINE ===
+[sp-optane] Total boot: 7044.34 ms (map=7032.16, parse=2.37, index=9.81)
+[sp-optane] Pre-staged 250 non-expert tensors as fp32 (7.99 GiB) in 3464.1 ms
+[BOOT] Stage 2: Initializing AVX-512 Shredder...
+[sp-shredder] CPU features: AVX-512F=1 BW=1 VNNI=1 F16C=1 FP16=0
+[sp-shredder] Staging buffer: 4.00 MB (2097152 elements, fp16)
+[BOOT] Stage 3: Detecting GPU hardware...
+[sp-sync] CUDA GPU[0]: NVIDIA GeForce RTX 2060 — 12288 MB VRAM (0 MB free)
+[sp-sync] Single GPU mode: NVIDIA GeForce RTX 2060 (CUDA)
+[BOOT] Stage 4: Initializing ping-pong buffers...
+[BOOT] Stage 5: Sidecar disabled (mode=LEGACY)
+[sp-l0] Loaded ze_loader.dll
+[sp-l0] Device[0]: Intel(R) UHD Graphics (vendor=0x8086 type=1 flags=0x1)
+[sp-l0] ✓ Selected: Intel(R) UHD Graphics (32 EUs, 1 slices × 4 subslices)
+[sp-l0] Level Zero READY — Intel(R) UHD Graphics on Ring Bus
+[shadow-steal] Level Zero ARMED — Intel(R) UHD Graphics on Ring Bus
+[BOOT] Shadow-Steal: initialized (expert_dim=2048, tau=0.70)
+[sp-sync] Added GPU[1]: Level Zero device 0
+[BOOT] Registered UHD 750 as M2 Shadow Steal
+[BOOT] Stage 6: Initializing Shannon-Prime KV cache...
+[BOOT] KV cache: 40 layers × 2 heads × hd=128 (lazy alloc)
+╔══════════════════════════════════════�
+�═══════╗
+║  BEAST CANYON ENGINE: ONLINE                 ║
+║  Boot time: 10768.77 ms                       ║
+║  Reservoir: 20186.2 MB (qwen35moe)           ║
+║  GPUs:      2 configured                     ║
+║  Sidecar:   OFFLINE                       ║
+╚══════════════════════════════════════�
+�═══════╝
+[sp-engine] Furnace ARMED via --beast: reservoir=F:\Qwen3.6-35B-A3B-Q4_K_M.gguf GPUs=2 sidecar=offline
+[sp-engine] BEAST_MOE dispatch ARMED — routed-expert FFN will route per-token through Beast Canyon
+[sp-cuda-hier] init: pd=330 skel=30 target=300 res_bits=2 bytes_per_pos=103 n_slots=80 max_seq=10
+[sp-engine] KvCache::create_gpu: hier path, hd=256 pad_dim=330 n_skel=30 n_target=300 res_bits=2 bytes_per_pos=103
+Hi[sp-engine] hierarchical (GPU) cache: n_layer=40 n_head_kv=2 head_dim=256 pad_dim=330 max_seq=10 compression=4.97x 
+skel=30/330 (9%) K=103B/pos V=103B/pos [GPU-resident]
+[sp-engine] PE: PrimePE-RoPE (composite-tiered, alpha=0.17)
+[sp-engine:diag] bind_cache: is_gpu=1 n_layer=40 n_head_kv=2 head_dim=256 max_seq=10
+[sp-mertens] Initialized for ctx=10: 0 high-risk positions flagged, O(1) risk cache active (0 KB)
+[sp-engine] Cauchy system initialized: mode=2 fixed_n=512 ricci=no mertens=yes params_b=0.00
+[sp-beast] GDN state: conv=3.8 MB  ssm=80.0 MB  (30 layers)
+╔══════════════════════════════════════�
+�═══════════════╗
+║  BEAST CANYON INFERENCE                              ║
+║  Model: qwen35moe                                   ║
+║  Layers:  40  Embd: 2048  Vocab: 248320              ║
+║  MoE: 256 experts (top-8)  CRT: DUAL-GPU                  ║
+║  Hybrid: 30 SSM + 10 ATTN layers (interval=4)       ║
+║  KV cache: 10 attn × 512 × 256 ctx = 5.0 MB         ║
+╚══════════════════════════════════════�
+�═══════════════╝
+[sp-beast] Prefill: 2 tokens
+[sp-beast] Layer 1/40  pos=0  SSM
+=== WALL_MS=67062

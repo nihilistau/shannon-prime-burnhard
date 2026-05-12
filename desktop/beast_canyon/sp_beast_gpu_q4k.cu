@@ -127,4 +127,81 @@ cudaError_t sp_beast_gpu_q4k_matvec_launch(
     return cudaGetLastError();
 }
 
+// ============================================================================
+// RMS norm + elementwise kernels — feed the matvecs without round-tripping
+// ============================================================================
+
+// y[i] = x[i] * inv_rms * weight[i],  inv_rms = 1 / sqrt(mean(x^2) + eps)
+// One block per RMS norm call (n_embd up to ~4K — fits one block easily).
+// Block reduces x[i]^2 in shared memory, then writes y.
+__global__ void sp_rms_norm_kernel(const float *__restrict__ x,
+                                    const float *__restrict__ weight,
+                                    float       *__restrict__ y,
+                                    int n, float eps)
+{
+    const int tid = threadIdx.x;
+    const int T   = blockDim.x;
+
+    __shared__ float ss_buf[32];   // one slot per warp; up to 1024 threads
+
+    // Partial sum-of-squares.
+    float partial = 0.0f;
+    for (int i = tid; i < n; i += T) {
+        const float xi = x[i];
+        partial += xi * xi;
+    }
+    // Warp reduce
+    #pragma unroll
+    for (int off = 16; off > 0; off >>= 1) {
+        partial += __shfl_xor_sync(0xFFFFFFFF, partial, off);
+    }
+    const int warp_id  = tid >> 5;
+    const int lane     = tid & 31;
+    if (lane == 0) ss_buf[warp_id] = partial;
+    __syncthreads();
+
+    // Final reduce by first warp.
+    float ss = 0.0f;
+    if (tid < 32) {
+        const int n_warps = (T + 31) >> 5;
+        ss = (tid < n_warps) ? ss_buf[tid] : 0.0f;
+        #pragma unroll
+        for (int off = 16; off > 0; off >>= 1) {
+            ss += __shfl_xor_sync(0xFFFFFFFF, ss, off);
+        }
+        if (tid == 0) ss_buf[0] = ss;
+    }
+    __syncthreads();
+    const float inv = rsqrtf(ss_buf[0] / (float)n + eps);
+
+    // Scale and write.
+    for (int i = tid; i < n; i += T) {
+        y[i] = x[i] * inv * weight[i];
+    }
+}
+
+cudaError_t sp_beast_gpu_rms_norm_launch(
+    const float *d_x, const float *d_w, float *d_y,
+    int n, float eps, cudaStream_t stream)
+{
+    const int threads = (n >= 1024) ? 1024 : 256;
+    sp_rms_norm_kernel<<<1, threads, 0, stream>>>(d_x, d_w, d_y, n, eps);
+    return cudaGetLastError();
+}
+
+// y[i] += a[i]  — residual add.
+__global__ void sp_add_kernel(float *__restrict__ y,
+                               const float *__restrict__ a, int n) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) y[i] += a[i];
+}
+
+cudaError_t sp_beast_gpu_add_launch(float *d_y, const float *d_a, int n,
+                                      cudaStream_t stream) {
+    const int threads = 256;
+    const int blocks  = (n + threads - 1) / threads;
+    sp_add_kernel<<<blocks, threads, 0, stream>>>(d_y, d_a, n);
+    return cudaGetLastError();
+}
+
 } // extern "C"
