@@ -21,6 +21,9 @@
 extern "C" {
 #include "sp_crt.h"
 #include "sp_crt_dispatch.h"
+#ifdef SP_ENGINE_WITH_BEAST
+#include "sp_beast_canyon.h"
+#endif
 }
 
 #include "ggml.h"
@@ -428,3 +431,101 @@ extern "C" ggml_tensor *sp_build_burn_moe_op(ggml_context *gctx,
                            burn_moe_compute,
                            /*n_tasks=*/1, ud);
 }
+
+// ============================================================================
+// BEAST_MOE — wraps sp_beast_moe_forward into a ggml custom op so the chat
+// path's per-token MoE FFN can be routed through the Beast Canyon orchestrator
+// (Optane reservoir + AVX-512 Shredder + dual-GPU dispatch + sidecar).
+// ============================================================================
+
+#ifdef SP_ENGINE_WITH_BEAST
+
+struct beast_moe_userdata {
+    sp_beast_engine_t *engine;
+    int                layer_idx;
+    int                n_expert;   // cached so we don't re-derive in compute
+};
+
+static void beast_moe_compute(ggml_tensor *dst, int ith, int nth, void *userdata) {
+    if (ith != 0) return;
+    (void)nth;
+    auto *ud = (beast_moe_userdata *)userdata;
+    if (!ud || !ud->engine) {
+        std::fprintf(stderr, "[beast_moe] no engine bound — refusing dispatch\n");
+        return;
+    }
+
+    const ggml_tensor *cur     = dst->src[0];   // [n_embd, n_tokens] f32
+    const ggml_tensor *logits  = dst->src[1];   // [n_expert, n_tokens] f32
+
+    const size_t n_embd   = (size_t)cur->ne[0];
+    const size_t n_tokens = (size_t)cur->ne[1];
+    const int    n_expert = (int)logits->ne[0];
+
+    static int s_logged = 0;
+    if (!s_logged) {
+        std::fprintf(stderr,
+            "[beast_moe] dispatch ARMED — n_embd=%zu n_expert=%d sidecar=%s\n",
+            n_embd, n_expert,
+            (ud->engine->sidecar.state == SP_SIDECAR_ONLINE) ? "ONLINE" : "offline");
+        s_logged = 1;
+    }
+
+    // Pull cur and logits to host. dst is already gallocr-allocated.
+    std::vector<float> cur_host(n_embd * n_tokens);
+    std::vector<float> log_host((size_t)n_expert * n_tokens);
+    ggml_backend_tensor_get(cur,    cur_host.data(), 0, cur_host.size() * sizeof(float));
+    ggml_backend_tensor_get(logits, log_host.data(), 0, log_host.size() * sizeof(float));
+
+    std::vector<float> out_host(n_embd * n_tokens, 0.0f);
+
+    // Per-token dispatch — sp_beast_moe_forward operates on a single token
+    // (single hidden_states vector + single router_logits vector). Loop here.
+    for (size_t t = 0; t < n_tokens; ++t) {
+        const float *toks_logits = log_host.data() + t * (size_t)n_expert;
+        const float *toks_hidden = cur_host.data() + t * n_embd;
+        float       *toks_output = out_host.data() + t * n_embd;
+        if (sp_beast_moe_forward(ud->engine, toks_logits, toks_hidden, toks_output,
+                                  ud->layer_idx) != 0) {
+            std::fprintf(stderr,
+                "[beast_moe] sp_beast_moe_forward failed at layer=%d token=%zu\n",
+                ud->layer_idx, t);
+            return;
+        }
+    }
+    ggml_backend_tensor_set(dst, out_host.data(), 0, out_host.size() * sizeof(float));
+}
+
+extern "C" ggml_tensor *sp_build_beast_moe_op(ggml_context *gctx,
+                                               ggml_tensor *cur,
+                                               ggml_tensor *router_logits,
+                                               sp_beast_engine_t *engine,
+                                               int layer_idx) {
+    auto *ud = new beast_moe_userdata;
+    ud->engine    = engine;
+    ud->layer_idx = layer_idx;
+    ud->n_expert  = (int)router_logits->ne[0];
+
+    const int64_t n_embd   = cur->ne[0];
+    const int64_t n_tokens = cur->ne[1];
+
+    ggml_tensor *args[2] = { cur, router_logits };
+    return ggml_custom_4d(gctx, GGML_TYPE_F32,
+                           n_embd, n_tokens, 1, 1,
+                           args, 2,
+                           beast_moe_compute,
+                           /*n_tasks=*/1, ud);
+}
+
+#else  // !SP_ENGINE_WITH_BEAST
+
+extern "C" ggml_tensor *sp_build_beast_moe_op(ggml_context *gctx,
+                                               ggml_tensor *cur,
+                                               ggml_tensor *router_logits,
+                                               sp_beast_engine_t *engine,
+                                               int layer_idx) {
+    (void)gctx; (void)cur; (void)router_logits; (void)engine; (void)layer_idx;
+    return nullptr;
+}
+
+#endif // SP_ENGINE_WITH_BEAST

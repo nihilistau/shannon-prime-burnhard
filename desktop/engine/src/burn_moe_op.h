@@ -58,6 +58,31 @@ struct ggml_tensor *sp_build_burn_moe_op(struct ggml_context *gctx,
                                           int pivot,
                                           sp_crt_dispatch_t *crt);   // optional, NULL=host fallback
 
+// ----------------------------------------------------------------------------
+// BEAST_MOE custom op — wraps sp_beast_moe_forward.
+//
+// When the chat path is run with --beast, the Beast Canyon orchestrator boots
+// alongside but the per-token MoE FFN still goes through the standard ggml
+// path. This op bridges that gap: it replaces the MoE FFN block with a single
+// host-side custom op that calls sp_beast_moe_forward(beast_engine, ...) once
+// per token. Inside, Beast Canyon does its own routing, Optane-resident
+// expert lookup, AVX-512 matvec / dual-GPU shred, and accumulation.
+//
+// Inputs:
+//   cur            — [n_embd, n_tokens] f32 hidden states
+//   router_logits  — [n_expert, n_tokens] f32 (gate_inp @ cur)
+// Output:
+//   [n_embd, n_tokens] f32 routed-expert FFN result (no shared expert).
+//
+// `engine` is opaque to the engine-side TU (forward declaration); the C
+// header sp_beast_canyon.h provides the real type.
+struct sp_beast_engine_t;
+struct ggml_tensor *sp_build_beast_moe_op(struct ggml_context *gctx,
+                                           struct ggml_tensor *cur,
+                                           struct ggml_tensor *router_logits,
+                                           struct sp_beast_engine_t *engine,
+                                           int layer_idx);
+
 #ifdef __cplusplus
 }
 #endif

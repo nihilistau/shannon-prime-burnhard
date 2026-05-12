@@ -33,6 +33,13 @@
 #include <utility>
 #include <vector>
 
+// Forward-declare the Beast Canyon engine type at GLOBAL scope so that the
+// `struct sp_beast_engine_t*` references inside namespace sp::engine resolve
+// to the same C type that burn_moe_op.h's sp_build_beast_moe_op expects.
+// (Without this, a stray `struct sp_beast_engine_t` mention inside the
+// namespace would create sp::engine::sp_beast_engine_t — a different type.)
+struct sp_beast_engine_t;
+
 namespace sp::engine {
 
 // Diagnostic prints from the GDN delta-net path. Off by default; enable
@@ -151,6 +158,14 @@ struct ForwardContext::Impl {
     // Config::FurnaceDispatch. Drives the BURN_MOE custom-op path inside
     // build_moe_ffn — see desktop/engine/src/burn_moe_op.cpp.
     int   furnace_dispatch = 0;
+
+    // Beast Canyon engine handle. When non-null, build_moe_ffn replaces
+    // its routed-expert FFN block with sp_build_beast_moe_op so each MoE
+    // FFN call routes per-token through the Beast Canyon orchestrator
+    // (Optane reservoir + AVX-512 Shredder + dual-GPU dispatch +
+    // sidecar). The handle's lifetime is owned by the caller (main.cpp's
+    // BeastGuard); we just hold a borrow.
+    struct sp_beast_engine_t* beast_engine = nullptr;
 
     // FFN activation. Llama/qwen/mistral/phi/granite use SwiGLU
     // (silu(gate) * up); gemma (1/2/3) uses GeGLU with the tanh
@@ -362,6 +377,18 @@ void ForwardContext::set_n_experts_used(int k) {
         "[sp-engine] n_experts_used override: %d -> %d (CLI)\n",
         impl_->n_expert_used, k);
     impl_->n_expert_used = k;
+}
+
+void ForwardContext::set_beast_engine(struct sp_beast_engine_t* engine) {
+    impl_->beast_engine = engine;
+    if (engine) {
+        std::fprintf(stderr,
+            "[sp-engine] BEAST_MOE dispatch ARMED — routed-expert FFN will "
+            "route per-token through Beast Canyon\n");
+    } else {
+        std::fprintf(stderr,
+            "[sp-engine] BEAST_MOE dispatch detached\n");
+    }
 }
 
 void ForwardContext::set_furnace_dispatch(int mode) {
@@ -1010,12 +1037,39 @@ static ggml_tensor* build_moe_ffn(ggml_context* gctx,
                                    // Furnace dispatch mode (0=off, 1=audit, 2=on).
                                    // Audit and On reroute routed-expert matmuls
                                    // through the BURN_MOE custom op (residue path).
-                                   int furnace_dispatch = 0) {
+                                   int furnace_dispatch = 0,
+                                   // Beast Canyon engine handle (optional).
+                                   // When non-null, the routed-expert FFN block
+                                   // is replaced by a single BEAST_MOE custom
+                                   // op that calls sp_beast_moe_forward per
+                                   // token. Bypasses the BURN_MOE residue path
+                                   // and the standard ggml_mul_mat_id chain.
+                                   struct sp_beast_engine_t* beast_engine = nullptr,
+                                   int   layer_idx = -1) {
     const int n_tokens = (int)cur->ne[1];
     const int n_embd   = (int)cur->ne[0];
 
     // 1-2. Router scores over the expert pool.
     ggml_tensor* logits = ggml_mul_mat(gctx, L.ffn_gate_inp, cur);   // [n_expert, n]
+
+    // BEAST_MOE shortcut: when beast_engine is bound, replace the entire
+    // routed-expert FFN block with one beast custom op. The shared expert
+    // (handled below the legacy block) is intentionally bypassed too —
+    // sp_beast_moe_forward returns the full FFN contribution; the caller's
+    // residual add (in build_block_*) closes the loop.
+    if (beast_engine && layer_idx >= 0) {
+        ggml_tensor* beast_out = sp_build_beast_moe_op(gctx, cur, logits,
+                                                        beast_engine, layer_idx);
+        if (beast_out) {
+            return ggml_reshape_2d(gctx, beast_out, n_embd, n_tokens);
+        }
+        // If the op builder returned null (engine misconfigured at runtime),
+        // fall through to the legacy path so the model still produces output.
+        std::fprintf(stderr,
+            "[build_moe_ffn] beast op returned null at layer %d — "
+            "falling back to standard ggml path\n", layer_idx);
+    }
+
     ggml_tensor* probs  = ggml_soft_max(gctx, logits);               // [n_expert, n]
 
     // 3. Top-k expert indices per token.
@@ -1561,7 +1615,9 @@ static ggml_tensor* build_block_moe_attn(ggml_context* gctx,
                                           ggml_tensor** v_capture = nullptr,
                                           ggml_tensor** selected_capture = nullptr,
                                           sp_crt_dispatch_t* crt = nullptr,
-                                          int furnace_dispatch = 0) {
+                                          int furnace_dispatch = 0,
+                                          struct sp_beast_engine_t* beast_engine = nullptr,
+                                          int   layer_idx = -1) {
     // Qwen3-Next gated attention.
     //
     // The wq projection is 2× wider than a standard attention head
@@ -1701,7 +1757,8 @@ static ggml_tensor* build_block_moe_attn(ggml_context* gctx,
         ffn_out = build_moe_ffn(gctx, xb, L,
                                 n_expert, n_expert_used,
                                 norm_topk_prob, expert_weights_scale,
-                                selected_capture, crt, furnace_dispatch);
+                                selected_capture, crt, furnace_dispatch,
+                                beast_engine, layer_idx);
     } else {
         // Dense SwiGLU FFN (qwen35 non-MoE hybrid).
         ggml_tensor* gate = ggml_mul_mat(gctx, L.ffn_gate, xb);
@@ -1768,7 +1825,9 @@ static ggml_tensor* build_block_gdn(ggml_context* gctx,
                                      bool  is_moe = true,
                                      ggml_tensor** selected_capture = nullptr,
                                      int   furnace_dispatch = 0,
-                                     sp_crt_dispatch_t* crt = nullptr) {
+                                     sp_crt_dispatch_t* crt = nullptr,
+                                     struct sp_beast_engine_t* beast_engine = nullptr,
+                                     int   layer_idx = -1) {
     const int qk_dim = num_qk_heads * head_qk_dim;  // 2048
     const int v_dim  = num_v_heads  * head_v_dim;   // 4096
     const size_t ele = ggml_type_size(GGML_TYPE_F32);
@@ -1975,7 +2034,8 @@ static ggml_tensor* build_block_gdn(ggml_context* gctx,
                                 n_expert, n_expert_used,
                                 norm_topk_prob, expert_weights_scale,
                                 selected_capture, crt,
-                                furnace_dispatch);
+                                furnace_dispatch,
+                                beast_engine, layer_idx);
     } else {
         // Dense SwiGLU FFN (qwen35 non-MoE hybrid).
         // For GDN layers the pre-norm is attn_post_norm (already applied
@@ -2285,7 +2345,8 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
                                       capture ? &v_cap : nullptr,
                                       curriculum_active ? &sel_cap : nullptr,
                                       impl_->crt_dispatch,
-                                      impl_->furnace_dispatch);
+                                      impl_->furnace_dispatch,
+                                      impl_->beast_engine, i);
             break;
         }
         case LlamaLayerKind::MOE_GDN: {
@@ -2314,7 +2375,8 @@ bool ForwardContext::forward_full(const std::vector<int32_t>& token_ids,
                                  impl_->is_moe,
                                  curriculum_active ? &sel_cap : nullptr,
                                  impl_->furnace_dispatch,
-                                 impl_->crt_dispatch);
+                                 impl_->crt_dispatch,
+                                 impl_->beast_engine, i);
             if (conv_out) { ggml_set_output(conv_out); gdn_conv_state_out[(size_t)i] = conv_out; }
             if (ssm_out)  { ggml_set_output(ssm_out);  gdn_ssm_state_out[(size_t)i]  = ssm_out;  }
             break;
@@ -2901,7 +2963,9 @@ static ggml_tensor* build_block_moe_attn_decode(
         ggml_tensor** k_capture,
         ggml_tensor** v_capture,
         sp_crt_dispatch_t* crt,
-        int   furnace_dispatch) {
+        int   furnace_dispatch,
+        struct sp_beast_engine_t* beast_engine = nullptr,
+        int   layer_idx = -1) {
     const int n_embd_q = n_head * head_dim;
     const int n        = 1;
     const int kv_total = past_n + 1;
@@ -3023,7 +3087,8 @@ static ggml_tensor* build_block_moe_attn_decode(
                                 n_expert, n_expert_used,
                                 norm_topk_prob, expert_weights_scale,
                                 /*selected_capture=*/nullptr,
-                                crt, furnace_dispatch);
+                                crt, furnace_dispatch,
+                                beast_engine, layer_idx);
     } else {
         // Dense FFN fallback (untested for moe=false at decode time; same
         // structure as build_block_decode's tail).
@@ -3354,7 +3419,8 @@ bool ForwardContext::decode(int32_t token_id,
                                             impl_->is_moe,
                                             &k_cap, &v_cap,
                                             impl_->crt_dispatch,
-                                            impl_->furnace_dispatch);
+                                            impl_->furnace_dispatch,
+                                            impl_->beast_engine, L);
             break;
         }
         case LlamaLayerKind::MOE_GDN: {
@@ -3380,7 +3446,8 @@ bool ForwardContext::decode(int32_t token_id,
                                  impl_->is_moe,
                                  /*selected_capture=*/nullptr,
                                  impl_->furnace_dispatch,
-                                 impl_->crt_dispatch);
+                                 impl_->crt_dispatch,
+                                 impl_->beast_engine, L);
             if (conv_out) { ggml_set_output(conv_out); gdn_conv_state_out[(size_t)L] = conv_out; }
             if (ssm_out)  { ggml_set_output(ssm_out);  gdn_ssm_state_out [(size_t)L] = ssm_out;  }
             break;

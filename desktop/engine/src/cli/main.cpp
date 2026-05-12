@@ -1274,6 +1274,10 @@ int main(int argc, char** argv) {
                     cc.beast_gguf_path.c_str(),
                     beast_engine.barrier.n_gpus,
                     (beast_engine.sidecar.state == SP_SIDECAR_ONLINE) ? "ONLINE" : "offline");
+                // Hand the engine handle to the chat-path ForwardContext so
+                // every routed-expert FFN call detours through Beast Canyon
+                // via sp_build_beast_moe_op (per-token sp_beast_moe_forward).
+                if (fc) fc->set_beast_engine(&beast_engine);
                 if (beast_engine.sidecar.state == SP_SIDECAR_ONLINE) {
                     beast_hb = sp_bridge_heartbeat_start(
                         beast_engine.sidecar.socket_fd, /*period_ms=*/1000,

@@ -29,6 +29,12 @@ struct ggml_context;
 struct ggml_tensor;
 typedef struct ggml_backend * ggml_backend_t;
 
+// Beast Canyon engine handle, forward-declared at global scope so the
+// setter signature matches the C struct from sp_beast_canyon.h. Must
+// not be qualified inside the sp::engine namespace below — that would
+// create a separate sp::engine::sp_beast_engine_t type.
+struct sp_beast_engine_t;
+
 namespace sp::engine {
 
 class LlamaWeights;
@@ -186,6 +192,14 @@ public:
     // FFN compute roughly proportionally, with a quality cost. No-op if
     // the model is non-MoE. Set before any forward call.
     void set_n_experts_used(int k);
+
+    // Bind a Beast Canyon engine handle (forward-declared). When set, the
+    // routed-expert FFN block in build_moe_ffn replaces the standard ggml
+    // mul_mat_id chain (and BURN_MOE) with sp_build_beast_moe_op — every
+    // MoE FFN call routes per-token through Beast Canyon's expert
+    // dispatcher (Optane reservoir + AVX-512 Shredder + dual-GPU + sidecar).
+    // Pass nullptr to detach. Caller owns the engine struct's lifetime.
+    void set_beast_engine(struct sp_beast_engine_t *engine);
 
     // Hparams the caller set at create(); exposed for diagnostics.
     int n_embd()  const;

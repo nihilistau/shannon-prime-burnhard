@@ -144,7 +144,10 @@ typedef struct {
 // Beast Canyon Engine
 // ============================================================================
 
-typedef struct {
+// Tagged so callers (C++ TUs in particular) can `struct sp_beast_engine_t`
+// forward-declare without colliding with the typedef name. C and C++ both
+// allow the tag and typedef to share an identifier safely.
+typedef struct sp_beast_engine_t {
     // Sub-systems
     sp_optane_reservoir_t  reservoir;    // Optane mmap + expert pointers
     sp_shredder_t          shredder;     // AVX-512 dequantization
