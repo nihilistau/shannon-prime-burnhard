@@ -35,6 +35,18 @@
 #  include <immintrin.h>
 #endif
 
+#if defined(_OPENMP)
+#  include <omp.h>
+#endif
+
+#if defined(_MSC_VER)
+#  include <malloc.h>
+#  define SP_ALLOCA(bytes) _alloca(bytes)
+#else
+#  include <alloca.h>
+#  define SP_ALLOCA(bytes) alloca(bytes)
+#endif
+
 // ============================================================================
 // Timing
 // ============================================================================
@@ -503,6 +515,9 @@ static void   beast_dequant_row(const void *src, float *dst, uint32_t type, int 
 static void   beast_matvec(const sp_optane_tensor_t *W,
                             const float *x, float *out, float *scratch,
                             int n_out, int n_in);
+static void   beast_matvec_serial(const sp_optane_tensor_t *W,
+                                    const float *x, float *out,
+                                    int n_out, int n_in);
 
 static beast_dequant_cache_t *beast_get_or_init_cache(sp_beast_engine_t *engine) {
     if (!engine->beast_dequant_cache) {
@@ -572,9 +587,7 @@ static float *beast_dequant_reserve(beast_dequant_cache_t *c,
 //
 // The dot kernel here mirrors the OMP+AVX-512 path inside beast_matvec,
 // minus the dequant pass — n_out rows of size n_in already-fp32.
-#if defined(__AVX512F__) || defined(_MSC_VER)
-#  include <immintrin.h>
-#endif
+// (immintrin already pulled in at TU top.)
 static void beast_matvec_cached(sp_beast_engine_t *engine,
                                   const sp_optane_tensor_t *W,
                                   const float *x, float *out,
@@ -670,77 +683,98 @@ int sp_beast_moe_forward(sp_beast_engine_t *engine,
     }
     if (probe_n_ff <= 0 || probe_in_dim <= 0) return 0;
     const size_t ff_floats = (size_t)probe_n_ff;
-    float *gate_buf = (float *)malloc(ff_floats * sizeof(float));
-    float *up_buf   = (float *)malloc(ff_floats * sizeof(float));
-    float *down_out = (float *)malloc(hidden_dim * sizeof(float));
-    if (!gate_buf || !up_buf || !down_out) {
-        free(gate_buf); free(up_buf); free(down_out);
-        return -1;
-    }
 
-    // ── Step 2: Per-expert FFN (gate→SiLU·up→down) ──────────────────
-    for (int k = 0; k < r->n_selected; k++) {
-        int eid = r->expert_ids[k];
-        float score = r->expert_scores[k];
-        const sp_optane_expert_t *exp = sp_optane_layer_expert(&engine->reservoir, layer, eid);
-        if (!exp) continue;
+    // ── Step 2: Per-expert FFN — OMP-parallel across experts.
+    //
+    // Coarse-grained parallelism: each thread takes a subset of the
+    // n_selected (typically 8) experts and does ALL of that expert's
+    // gate / up / down matvecs serially. The matvec inner uses
+    // beast_matvec_serial (no nested OMP). This eliminates the
+    // ~30 us per-call OMP fork/join cost the inner-parallel beast_matvec
+    // was paying — at 24 matvecs × 8 experts × 40 layers per token
+    // (~7700 calls) that overhead alone was a sizeable fraction of the
+    // per-token budget.
+    //
+    // Each thread writes into its own private contribution buffer; we
+    // sum into `output` after the parallel region. Keeps the inner loop
+    // race-free without atomics.
+#if defined(_OPENMP)
+    const int n_threads = omp_get_max_threads();
+#else
+    const int n_threads = 1;
+#endif
+    // Per-thread contribution accumulators (zero-init).
+    float *thread_out = (float *)calloc((size_t)n_threads * hidden_dim, sizeof(float));
+    if (!thread_out) return -1;
 
-        // Prefetch next expert (layer-aware flat index)
-        if (k + 1 < r->n_selected) {
-            int next_eid = r->expert_ids[k+1];
-            int next_flat = layer * engine->reservoir.n_experts + next_eid;
-            if (next_flat < SP_OPTANE_MAX_EXPERTS) {
-                const sp_optane_expert_t *next_exp = &engine->reservoir.experts[next_flat];
-                if (next_exp->gate_proj) sp_optane_prefetch_tensor(next_exp->gate_proj, 0, next_exp->gate_proj->n_bytes);
-                if (next_exp->up_proj)   sp_optane_prefetch_tensor(next_exp->up_proj,   0, next_exp->up_proj->n_bytes);
-                if (next_exp->down_proj) sp_optane_prefetch_tensor(next_exp->down_proj, 0, next_exp->down_proj->n_bytes);
-            }
-        }
+    int k_idx;
+#if defined(_OPENMP)
+    #pragma omp parallel for schedule(static)
+#endif
+    for (k_idx = 0; k_idx < r->n_selected; k_idx++) {
+        const int   eid   = r->expert_ids[k_idx];
+        const float score = r->expert_scores[k_idx];
+        const sp_optane_expert_t *exp =
+            sp_optane_layer_expert(&engine->reservoir, layer, eid);
+        if (!exp || !exp->gate_proj || !exp->up_proj || !exp->down_proj) continue;
 
-        // All three projections required for a real expert FFN
-        if (!exp->gate_proj || !exp->up_proj || !exp->down_proj) continue;
-
-        int n_ff   = (int)exp->gate_proj->ne[1];
-        int in_dim = (int)exp->gate_proj->ne[0];
+        const int n_ff   = (int)exp->gate_proj->ne[1];
+        const int in_dim = (int)exp->gate_proj->ne[0];
         if (n_ff <= 0 || in_dim <= 0) continue;
 
-        // CRT Shredder telemetry: shred gate weights into residue streams
-        if (crt_armed) {
-            sp_shredder_crt_q8_expert(&engine->shredder_crt,
-                                      exp->gate_proj->ptr,
-                                      n_ff, in_dim);
-        }
+        // Per-thread scratch — alloca'd inside the parallel region so
+        // each thread gets its own. ff_floats was probed before entering
+        // OMP (loop-invariant for this layer's experts).
+        float *gate_buf = (float *)SP_ALLOCA(ff_floats * sizeof(float));
+        float *up_buf   = (float *)SP_ALLOCA(ff_floats * sizeof(float));
+        float *down_out = (float *)SP_ALLOCA(hidden_dim * sizeof(float));
 
-        // Pure OMP+AVX-512 path. The earlier LRU dequant cache turned out
-        // to regress because (layer,expert,kind) keyspace is too sparse
-        // (~30k unique tuples for Qwen3.6 35B-A3B) vs any reasonable cap,
-        // so hit rate is 0% in practice and the miss path's two-pass
-        // memory traffic is slower than the fused dequant+dot in matvec.
-        float *scratch = engine->beast_scratch;
-
-        // Gate projection: [n_ff, n_embd] × [n_embd] → [n_ff]
-        beast_matvec(exp->gate_proj, hidden_states, gate_buf, scratch,
-                     n_ff, (int)hidden_dim);
-
-        // Up projection: [n_ff, n_embd] × [n_embd] → [n_ff]
-        beast_matvec(exp->up_proj, hidden_states, up_buf, scratch,
-                     n_ff, (int)hidden_dim);
-
-        // SiLU(gate) * up
+        // Gate / up / down — serial inner matvec.
+        beast_matvec_serial(exp->gate_proj, hidden_states, gate_buf,
+                            n_ff, (int)hidden_dim);
+        beast_matvec_serial(exp->up_proj,   hidden_states, up_buf,
+                            n_ff, (int)hidden_dim);
         beast_silu_mul(gate_buf, up_buf, n_ff);
+        beast_matvec_serial(exp->down_proj, gate_buf, down_out,
+                            (int)hidden_dim, n_ff);
 
-        // Down projection: [n_embd, n_ff] × [n_ff] → [n_embd]
-        beast_matvec(exp->down_proj, gate_buf, down_out, scratch,
-                     (int)hidden_dim, n_ff);
-
-        // Weighted accumulation into output
+        // Accumulate into this thread's private slot.
+#if defined(_OPENMP)
+        const int tid = omp_get_thread_num();
+#else
+        const int tid = 0;
+#endif
+        float *my_out = thread_out + (size_t)tid * hidden_dim;
         for (size_t i = 0; i < hidden_dim; i++) {
-            output[i] += score * down_out[i];
+            my_out[i] += score * down_out[i];
         }
     }
-    free(gate_buf);
-    free(up_buf);
-    free(down_out);
+
+    // Reduce per-thread contributions into the final output. memset the
+    // output first because the function contract expects us to write the
+    // full FFN result (no in-place accumulation from caller).
+    for (int t = 0; t < n_threads; t++) {
+        const float *src = thread_out + (size_t)t * hidden_dim;
+        for (size_t i = 0; i < hidden_dim; i++) output[i] += src[i];
+    }
+    free(thread_out);
+
+    // CRT Shredder telemetry: optional per-layer accounting of which
+    // experts ran. Done outside the parallel region to keep the hot path
+    // lock-free; cheap (just metadata).
+    if (crt_armed) {
+        for (int k = 0; k < r->n_selected; k++) {
+            const int eid = r->expert_ids[k];
+            const sp_optane_expert_t *exp =
+                sp_optane_layer_expert(&engine->reservoir, layer, eid);
+            if (exp && exp->gate_proj) {
+                int n_ff   = (int)exp->gate_proj->ne[1];
+                int in_dim = (int)exp->gate_proj->ne[0];
+                sp_shredder_crt_q8_expert(&engine->shredder_crt,
+                                           exp->gate_proj->ptr, n_ff, in_dim);
+            }
+        }
+    }
 
     // ── Step 3: CRT dispatch + barrier (telemetry for dual-GPU) ─────
     if (crt_armed) {
@@ -1492,19 +1526,40 @@ static void beast_rms_norm(const float *x, const float *scale,
 // 40 layers × ~1M FMAs each ≈ 7.7 GFMAs purely sequential CPU. With 8
 // cores doing rows in parallel this drops to ~1 GFMA per core which AVX-512
 // at ~50 GFLOPS/core handles in ~20ms / token.
+// (immintrin / omp / alloca already included at the top of this TU.)
+// Serial inner matvec — no OMP. Used when the caller has already opened
+// a parallel region at coarser granularity (e.g. omp parallel for over
+// experts in sp_beast_moe_forward). The OMP fork/join cost was ~30 us
+// per matvec call, and at 960 matvecs/token that was ~29 ms of pure
+// overhead — almost half the per-token budget at 3.3 tok/s. Coarsening
+// parallelism to one thread per expert kills that overhead.
+static void beast_matvec_serial(const sp_optane_tensor_t *W,
+                                  const float *x, float *out,
+                                  int n_out, int n_in) {
+    const uint8_t *w_data = (const uint8_t *)W->ptr;
+    const size_t rb = beast_row_bytes(W->type, n_in);
+    float *t_scratch = (float *)SP_ALLOCA((size_t)n_in * sizeof(float));
+    for (int i = 0; i < n_out; i++) {
+        beast_dequant_row(w_data + (size_t)i * rb, t_scratch, W->type, n_in);
 #if defined(__AVX512F__) || defined(_MSC_VER)
-#include <immintrin.h>
-#endif
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
-#if defined(_MSC_VER)
-#include <malloc.h>
-#define SP_ALLOCA(bytes) _alloca(bytes)
+        __m512 acc = _mm512_setzero_ps();
+        int j = 0;
+        for (; j + 16 <= n_in; j += 16) {
+            __m512 a = _mm512_loadu_ps(t_scratch + j);
+            __m512 b = _mm512_loadu_ps(x         + j);
+            acc = _mm512_fmadd_ps(a, b, acc);
+        }
+        float sum = _mm512_reduce_add_ps(acc);
+        for (; j < n_in; ++j) sum += t_scratch[j] * x[j];
+        out[i] = sum;
 #else
-#include <alloca.h>
-#define SP_ALLOCA(bytes) alloca(bytes)
+        float sum = 0.0f;
+        for (int j = 0; j < n_in; j++) sum += t_scratch[j] * x[j];
+        out[i] = sum;
 #endif
+    }
+}
+
 static void beast_matvec(const sp_optane_tensor_t *W,
                          const float *x, float *out, float *scratch,
                          int n_out, int n_in) {
