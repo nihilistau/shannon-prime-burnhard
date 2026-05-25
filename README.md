@@ -43,3 +43,14 @@ ninja
 ## See Also
 
 - [shannon-prime-bernhard](https://github.com/nihilistau/shannon-prime-bernhard) — Mathematical foundations and proofs
+- [Position_Is_Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic) - The Master Repo With all Document Revisions and History (Where it all started)
+- [Shannon-Prime-Lattice](https://github.com/nihilistau/shannon-prime-lattice) - Distributed BlockChain Inference (This contains fresh re-write of all Engines)
+- [shannon-prime-system](https://github.com/nihilistau/shannon-prime-system) - PPT ARM Lattice System
+- [shannon-prime-system-engine](https://github.com/nihilistau/shannon-prime-system-engine) PPT ARM Lattice Engines
+- [shannon-prime](https://github.com/nihilistau/shannon-prime) - Original Shannon-Prime Repo
+- [shannon-prime-engine](https://github.com/nihilistau/shannon-prime-engine) - Original Engine Repo
+- [shannon-prime-llama](https://github.com/nihilistau/shannon-prime-llama) - original llama implementation
+- [shannon-prime-lmstudio-server](https://github.com/nihilistau/shannon-prime-lmstudio-server) - Original GGML LMStudio implementation
+- [voxtral-mini-realtime-rs](https://github.com/nihilistau/voxtral-mini-realtime-rs) - Custom CPU kernel, KVcache Real-Time Rust TTS-STT
+- [Shannon-Prime-Lattice-Discord](https://discord.gg/rre9XZmvV) - The Shannon-Prime-Lattice Discord
+
